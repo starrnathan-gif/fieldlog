@@ -56,6 +56,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#0c1220;color:#e2
 .offline-badge.show{display:block}
 .online-badge{position:fixed;top:46px;right:10px;background:#14532d;color:#86efac;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;z-index:999;display:none}
 select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+input[list]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23475569' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.fi::placeholder{color:#4a5568}
 </style>
 </head>
 <body>
@@ -181,11 +183,37 @@ function doImport(){
 function doShare(){
   var d=JSON.stringify(borings,null,2);
   var fname="boring_"+(B().id||"logs")+"_"+new Date().toISOString().slice(0,10)+".json";
+  var blob=new Blob([d],{type:"application/json"});
+
+  // Try 1: Share as file (works on iOS 15+ Safari, Android Chrome)
   try{
-    var file=new File([d],fname,{type:"application/json"});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:"Boring Log - "+B().id});return;}
+    var file=new File([blob],fname,{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:"Boring Log - "+B().id}).catch(function(){});
+      return;
+    }
   }catch(e){}
-  if(navigator.share){navigator.share({title:"Boring Log - "+B().id,text:d});return;}
+
+  // Try 2: Share as download URL (creates a temp object URL)
+  try{
+    if(navigator.share){
+      navigator.share({
+        title:"Boring Log - "+(B().id||"data"),
+        text:"Boring log data for "+(B().id||"project")+"\n\n"+d.substring(0,500)+"..."
+      }).catch(function(){});
+      return;
+    }
+  }catch(e){}
+
+  // Try 3: Copy to clipboard
+  try{
+    navigator.clipboard.writeText(d).then(function(){
+      toast("Copied to clipboard — paste into a file or message");
+    });
+    return;
+  }catch(e){}
+
+  // Fallback: just download
   doSave();
 }
 
@@ -198,29 +226,56 @@ function doAddBoring(){
   toast("New boring added");
 }
 
-// ===== SELECT HELPERS =====
-function opts(arr,blankLabel){
-  return arr.map(function(o){
-    var v=Array.isArray(o)?o[0]:o;
-    var lb=Array.isArray(o)?o[1]:o;
-    return '<option value="'+esc(String(v))+'">'+(lb===""?(blankLabel||"– select –"):esc(String(lb)))+'</option>';
-  }).join("");
-}
+// ===== UNIQUE ID COUNTER =====
+var _dlid=0;
 
+// ===== SELECT HELPERS =====
+// Editable dropdown: input + datalist. Allows custom entry but shows suggestions.
 function sel(id,val,options,blankLabel){
-  var h='<select class="fi" onchange="handleChange(\''+id+'\',this.value)">';
+  var lid='dl'+(_dlid++);
+  var isNum=false;
+  // Check if options are all numbers
+  if(options.length>0){
+    var first=Array.isArray(options[0])?options[0][0]:options[0];
+    if(typeof first==='number'||(!isNaN(parseFloat(first))&&first!==''))isNum=true;
+  }
+  var h='<input class="fi" list="'+lid+'" value="'+esc(String(val==null||val===""?"":val))+'" placeholder="--"';
+  if(isNum) h+=' inputmode="decimal"';
+  h+=' onfocus="clearDash(this)" onchange="handleChange(\''+id+'\',this.value)" />';
+  h+='<datalist id="'+lid+'">';
   options.forEach(function(o){
     var v=Array.isArray(o)?o[0]:o;
     var lb=Array.isArray(o)?o[1]:o;
-    var selected=(String(v)===String(val))?' selected':'';
-    h+='<option value="'+esc(String(v))+'"'+selected+'>'+(lb===""?(blankLabel||"– select –"):esc(String(lb)))+'</option>';
+    if(v===""&&!blankLabel) return; // skip blank option
+    h+='<option value="'+esc(String(v))+'">'+(lb!=null&&lb!==v?esc(String(lb)):"")+'</option>';
   });
-  h+='</select>';return h;
+  h+='</datalist>';return h;
 }
 
+// Text input with -- placeholder
 function inp(id,val,placeholder){
-  return '<input class="fi" value="'+esc(String(val||""))+'" placeholder="'+esc(placeholder||"")+'" onchange="handleChange(\''+id+'\',this.value)" />';
+  var ph=placeholder||"--";
+  return '<input class="fi" value="'+esc(String(val||""))+'" placeholder="'+esc(ph)+'" onfocus="clearDash(this)" onchange="handleChange(\''+id+'\',this.value)" />';
 }
+
+// Number input: shows decimal keyboard, enforces numeric
+function numInp(id,val,placeholder){
+  var ph=placeholder||"--";
+  return '<input class="fi" inputmode="decimal" value="'+esc(String(val||""))+'" placeholder="'+esc(ph)+'" onfocus="clearDash(this)" onchange="handleNumChange(\''+id+'\',this)" />';
+}
+
+// Clear "--" default on focus
+window.clearDash=function(el){
+  if(el.value==="--"||el.value==="- -") el.value="";
+};
+
+// Numeric change handler - strips non-numeric, allows negatives and decimals
+window.handleNumChange=function(id,el){
+  var v=el.value.replace(/[^0-9.\-]/g,"");
+  if(v!==""&&isNaN(parseFloat(v))){v="";el.value="";}
+  else el.value=v;
+  handleChange(id,v);
+};
 
 function field(label,content,half){
   return '<div'+(half?' class="c50"':'')+'><label class="fl">'+esc(label)+'</label>'+content+'</div>';
@@ -230,14 +285,14 @@ function field(label,content,half){
 window.handleChange=function(id,val){
   var parts=id.split(".");
   if(parts.length===1){
-    // Simple field
     var f=parts[0];
-    if(f==="total_depth")val=+val;
+    if(f==="total_depth"){val=parseFloat(val);if(isNaN(val))val=15;}
     borings[bi][f]=val;
   }else if(parts.length===3){
-    // Array field: arr.idx.field
     var arr=parts[0],idx=+parts[1],fld=parts[2];
-    if(["top","bot","tool_len","depth","gr","sa","fi"].indexOf(fld)>=0)val=+val;
+    if(["top","bot","tool_len","depth","gr","sa","fi"].indexOf(fld)>=0){
+      val=parseFloat(val);if(isNaN(val))val=0;
+    }
     if(fld==="dup")val=(val==="true"||val===true);
     borings[bi][arr][idx][fld]=val;
   }
@@ -265,6 +320,7 @@ function renderTabs(){
 }
 
 function renderBody(){
+  _dlid=0; // reset datalist IDs
   var b=B();
   var h='';
 
@@ -299,7 +355,7 @@ function renderBody(){
     (b.pid||[]).forEach(function(p,i){
       h+='<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px">';
       h+=field(i===0?"Depth (ft)":"\u00A0",sel("pid."+i+".depth",p.depth,DEPTHS.map(function(d){return[d,d];})),true);
-      h+=field(i===0?"Reading (ppm)":"\u00A0",inp("pid."+i+".reading",p.reading,"0.18"),true);
+      h+=field(i===0?"Reading (ppm)":"\u00A0",numInp("pid."+i+".reading",p.reading,"0.18"),true);
       h+='<button class="dbtn" style="margin-bottom:2px" onclick="delArr(\'pid\','+i+')">X</button></div>';
     });
     var lastP=b.pid[b.pid.length-1];var nd=lastP?+lastP.depth+2:1;
