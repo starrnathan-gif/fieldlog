@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Field Log">
+<meta name="theme-color" content="#0c1220">
+<link rel="manifest" href="manifest.json">
+<title>Field Boring Log</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:rgba(0,0,0,0)}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0c1220;color:#e2e8f0}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.hdr{background:#1e3a5f;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.hdr h1{font-size:15px;color:#60a5fa;font-weight:700}
+.hdr .btns{display:flex;gap:4px}
+.hdr button{padding:8px 10px;background:#0e1a2f;border:1px solid #334155;border-radius:8px;color:#93c5fd;font-size:12px;font-weight:600;cursor:pointer;-webkit-appearance:none;touch-action:manipulation}
+.bsel{display:flex;gap:4px;padding:6px 10px;overflow-x:auto;background:#111827;border-bottom:1px solid #1e3a5f;flex-shrink:0;-webkit-overflow-scrolling:touch}
+.bsel button{padding:8px 14px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:12px;cursor:pointer;white-space:nowrap;touch-action:manipulation;-webkit-appearance:none}
+.bsel button.act{border:2px solid #60a5fa;background:#1e3a5f;color:#93c5fd;font-weight:700}
+.tabs{display:flex;overflow-x:auto;gap:2px;padding:4px 6px;background:#111827;border-bottom:2px solid #1e3a5f;flex-shrink:0;-webkit-overflow-scrolling:touch}
+.tabs button{padding:10px 12px;border-radius:8px;border:none;background:transparent;color:#64748b;font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap;-webkit-appearance:none;touch-action:manipulation}
+.tabs button.act{background:#2563eb;color:#fff;font-weight:700}
+.body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:20px}
+.card{background:#1e293b;border-radius:12px;padding:14px;margin:8px 10px 0;border:1px solid #334155}
+.ctitle{font-size:14px;font-weight:700;color:#60a5fa;margin-bottom:10px}
+.stitle{font-size:13px;font-weight:700;color:#f59e0b;margin:10px 0 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.c50{flex:0 0 calc(50% - 4px);min-width:0}
+.fl{display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:3px}
+.fi{width:100%;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:16px;box-sizing:border-box;-webkit-appearance:none}
+.ta{width:100%;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:14px;box-sizing:border-box;resize:vertical;min-height:60px}
+.btn{width:100%;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-top:8px;-webkit-appearance:none;touch-action:manipulation}
+.btn-blue{background:#2563eb}
+.btn-teal{background:#0d9488}
+.btn-red{background:#7f1d1d}
+.dbtn{padding:8px 12px;background:#7f1d1d;color:#fca5a5;border:none;border-radius:8px;font-size:16px;cursor:pointer;line-height:1;touch-action:manipulation;-webkit-appearance:none}
+.item{background:#0f172a;border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid #334155}
+.ihdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.inum{font-size:13px;font-weight:700;color:#93c5fd}
+.dvd{border-top:1px solid #334155;margin:14px 0}
+.tok{background:#14532d;color:#86efac;padding:8px;border-radius:8px;font-size:12px;font-weight:700;text-align:center;margin-top:4px}
+.tbad{background:#7f1d1d;color:#fca5a5;padding:8px;border-radius:8px;font-size:12px;font-weight:700;text-align:center;margin-top:4px}
+.acls{background:#1e293b;border-radius:8px;padding:8px;margin:8px 0;font-size:12px;color:#94a3b8}
+.acls b{color:#f59e0b}
+.lbar{display:flex;align-items:center;gap:8px;cursor:pointer;touch-action:manipulation}
+.lsw{width:30px;height:30px;border-radius:6px;border:1px solid #475569;flex-shrink:0}
+.slay{display:flex;gap:8px;margin-bottom:8px;align-items:flex-start}
+.ssw{width:28px;min-height:28px;border-radius:6px;border:1px solid #475569;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;flex-shrink:0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14532d;color:#86efac;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.offline-badge{position:fixed;top:46px;right:10px;background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;z-index:999;display:none}
+.offline-badge.show{display:block}
+.online-badge{position:fixed;top:46px;right:10px;background:#14532d;color:#86efac;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;z-index:999;display:none}
+select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <h1>Field Log</h1>
+    <div class="btns">
+      <button onclick="doImport()">Load</button>
+      <button onclick="doSave()">Save</button>
+      <button onclick="doShare()">Share</button>
+      <button onclick="doAddBoring()">+New</button>
+    </div>
+  </div>
+  <div id="bsel" class="bsel" style="display:none"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="body" id="body"></div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="offline-badge" id="offlineBadge">OFFLINE — data entry still works</div>
+
+<script>
+// ===== SERVICE WORKER =====
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(function() {
+    console.log('Service worker registered — offline ready');
+  }).catch(function(err) {
+    console.log('SW registration failed:', err);
+  });
+}
+
+// Offline/online indicator
+function updateOnlineStatus() {
+  var badge = document.getElementById('offlineBadge');
+  if (!navigator.onLine) {
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+</script>
+
+<script>
+// ===== DATA =====
+const UC={"AC":"#555","GP":"#D4A76A","GW":"#C4965A","SP":"#FFE4A0","SW":"#FFD700","SP-SM":"#F5DEB3","SP-SC":"#E8D0A0","SM":"#E8C97A","SC":"#D2B48C","GP-GM":"#CDA868","GM":"#BFA060","GC":"#A08050","ML":"#8FBC8F","CL":"#7BA37B","CL-ML":"#90C090","CH":"#5A8A5A","MH":"#6B9E6B","OL":"#6B4226","OH":"#4A2E10","PT":"#2E1A00"};
+const USCS_LIST=[["AC","Asphalt"],["GP","PG Gravel"],["GW","WG Gravel"],["GP-GM","PG Gravel w/ Silt"],["GM","Silty Gravel"],["GC","Clayey Gravel"],["SP","PG Sand"],["SW","WG Sand"],["SP-SM","PG Sand w/ Silt"],["SP-SC","PG Sand w/ Clay"],["SM","Silty Sand"],["SC","Clayey Sand"],["ML","Silt"],["CL","Lean Clay"],["CL-ML","Silty Clay"],["CH","Fat Clay"],["MH","Elastic Silt"],["OL","Organic(L)"],["OH","Organic(H)"],["PT","Peat"]];
+const COLORS=["","brown","dark brown","light brown","grayish brown","gray","dark gray","light gray","beige","reddish brown","black","tan","olive"];
+const MOISTURES=["","dry","moist","moist to wet","wet"];
+const GRADS=["","fine","medium","coarse","fine to medium","fine to coarse","medium to coarse","very fine to medium"];
+const STRUCTS=["massive","stratified","laminated","homogeneous","fissured","lensed","blocky"];
+const EXTRAS=["","with crushed shells","with woody debris","with cobbles","with organics","with roots"];
+const METHODS=["Direct Push","Hollow Stem Auger","Sonic","Rotary","Hand Auger","Test Pit"];
+const DEPTHS=[0,.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12,12.5,13,13.5,14,14.5,15,16,17,17.5,18,19,20,21,22,22.5,23,24,25,26,27,28,29,30,35,40,50];
+const PCTS=[0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
+const TLENS=[2,2.5,3,4,5,10];
+const RECOV=["","6","12","18","24","30","36","42","48","54","60","NR","N/A"];
+const STYPES=["SO","GW","GP","SH","GT"];
+const TD_OPTS=[5,10,15,20,25,30,35,40,50];
+const BF_OPTS=["Bentonite","Cement/Bentonite","Cuttings","Grout","Other"];
+const TABS=[["header","Header"],["samplers","Samplers"],["pid","PID"],["litho","Soils"],["samples","Samples"],["gw","GW"],["remarks","Notes"],["summary","Summary"]];
+
+let borings=[], bi=0, tab="header", expL=null;
+
+// Try to restore from autosave
+try{const saved=null;}catch(e){} // placeholder - no localStorage in some contexts
+
+function mkBlank(){
+  return {id:"",location:"",city:"",drill_co:"",date_start:"",method:"Direct Push",equipment:"",total_depth:15,gw_first:"N/A",gw_second:"N/A",field_rep:"",backfill:"Bentonite",screen_interval:"N/A",drillers:"",samplers:[],pid:[],lithology:[],samples:[],gw_samples:[],remarks:"",general_notes:""};
+}
+
+function classify(gr,sa,fi){
+  var t=gr+sa+fi;if(!t)return{s:"",n:""};
+  var pG=gr/t*100,pS=sa/t*100,pF=fi/t*100;
+  if(pF>=50){var n="SILT",sym="ML";if(pS>=30&&pS>=pG)n="Sandy "+n;else if(pG>=30&&pG>pS)n="Gravelly "+n;else if(pS>=15&&pS>=pG)n+=" with sand";else if(pG>=15)n+=" with gravel";return{s:sym,n:n};}
+  var isG=pG>pS,pr=isG?"GRAVEL":"SAND",oC=isG?pS:pG,oN=isG?"sand":"gravel";
+  if(pF<=5){var s1=isG?"GP":"SP";var n1="Poorly graded "+pr;if(oC>=15)n1+=" with "+oN;return{s:s1,n:n1};}
+  if(pF<=12){var s2=isG?"GP-GM":"SP-SM";var n2="Poorly graded "+pr+" with silt";if(oC>=15)n2+=" and "+oN;return{s:s2,n:n2};}
+  var s3=isG?"GM":"SM";var n3="Silty "+pr;if(oC>=15)n3+=" with "+oN;return{s:s3,n:n3};
+}
+
+function buildDesc(nm,sym,col,moi,grd,str){
+  var p=[nm+" ("+sym+")"];if(col)p.push(col);if(moi)p.push(moi);if(grd)p.push(grd);if(str)p.push(str);return p.join(", ")+".";
+}
+
+function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2000);}
+
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+// ===== INIT =====
+if(!borings.length) borings=[mkBlank()];
+
+function B(){return borings[bi];}
+
+function upd(f,v){borings[bi][f]=v;renderBody();}
+function updArr(arr,idx,obj){Object.assign(borings[bi][arr][idx],obj);renderBody();}
+function addArr(arr,obj){borings[bi][arr].push(obj);renderBody();}
+function delArr(arr,idx){borings[bi][arr].splice(idx,1);renderBody();}
+
+// ===== ACTIONS =====
+function doSave(){
+  var d=JSON.stringify(borings,null,2);
+  var blob=new Blob([d],{type:"application/json"});
+  var u=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=u;a.download="boring_"+(B().id||"logs")+"_"+new Date().toISOString().slice(0,10)+".json";a.click();
+  URL.revokeObjectURL(u);
+  toast("Saved!");
+}
+
+function doImport(){
+  var inp=document.createElement("input");inp.type="file";inp.accept=".json";
+  inp.onchange=function(e){
+    var f=e.target.files[0];if(!f)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      try{var d=JSON.parse(ev.target.result);borings=Array.isArray(d)?d:[d];bi=0;tab="header";expL=null;renderAll();toast("Loaded "+borings.length+" boring(s)");}catch(err){alert("Invalid JSON file");}
+    };reader.readAsText(f);
+  };inp.click();
+}
+
+function doShare(){
+  var d=JSON.stringify(borings,null,2);
+  var fname="boring_"+(B().id||"logs")+"_"+new Date().toISOString().slice(0,10)+".json";
+  try{
+    var file=new File([d],fname,{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:"Boring Log - "+B().id});return;}
+  }catch(e){}
+  if(navigator.share){navigator.share({title:"Boring Log - "+B().id,text:d});return;}
+  doSave();
+}
+
+function doAddBoring(){
+  var nb=mkBlank();var b=B();
+  nb.location=b.location;nb.city=b.city;nb.drill_co=b.drill_co;
+  nb.date_start=b.date_start;nb.method=b.method;nb.equipment=b.equipment;
+  nb.field_rep=b.field_rep;nb.backfill=b.backfill;nb.drillers=b.drillers||"";
+  borings.push(nb);bi=borings.length-1;tab="header";expL=null;renderAll();
+  toast("New boring added");
+}
+
+// ===== SELECT HELPERS =====
+function opts(arr,blankLabel){
+  return arr.map(function(o){
+    var v=Array.isArray(o)?o[0]:o;
+    var lb=Array.isArray(o)?o[1]:o;
+    return '<option value="'+esc(String(v))+'">'+(lb===""?(blankLabel||"– select –"):esc(String(lb)))+'</option>';
+  }).join("");
+}
+
+function sel(id,val,options,blankLabel){
+  var h='<select class="fi" onchange="handleChange(\''+id+'\',this.value)">';
+  options.forEach(function(o){
+    var v=Array.isArray(o)?o[0]:o;
+    var lb=Array.isArray(o)?o[1]:o;
+    var selected=(String(v)===String(val))?' selected':'';
+    h+='<option value="'+esc(String(v))+'"'+selected+'>'+(lb===""?(blankLabel||"– select –"):esc(String(lb)))+'</option>';
+  });
+  h+='</select>';return h;
+}
+
+function inp(id,val,placeholder){
+  return '<input class="fi" value="'+esc(String(val||""))+'" placeholder="'+esc(placeholder||"")+'" onchange="handleChange(\''+id+'\',this.value)" />';
+}
+
+function field(label,content,half){
+  return '<div'+(half?' class="c50"':'')+'><label class="fl">'+esc(label)+'</label>'+content+'</div>';
+}
+
+// ===== CHANGE HANDLER =====
+window.handleChange=function(id,val){
+  var parts=id.split(".");
+  if(parts.length===1){
+    // Simple field
+    var f=parts[0];
+    if(f==="total_depth")val=+val;
+    borings[bi][f]=val;
+  }else if(parts.length===3){
+    // Array field: arr.idx.field
+    var arr=parts[0],idx=+parts[1],fld=parts[2];
+    if(["top","bot","tool_len","depth","gr","sa","fi"].indexOf(fld)>=0)val=+val;
+    if(fld==="dup")val=(val==="true"||val===true);
+    borings[bi][arr][idx][fld]=val;
+  }
+  renderBody();
+};
+
+// ===== RENDER =====
+function renderAll(){
+  renderBsel();renderTabs();renderBody();
+}
+
+function renderBsel(){
+  var el=document.getElementById("bsel");
+  if(borings.length<=1){el.style.display="none";return;}
+  el.style.display="flex";
+  el.innerHTML=borings.map(function(br,i){
+    return '<button class="'+(i===bi?"act":"")+'" onclick="bi='+i+';expL=null;renderAll()">'+esc(br.id||("Boring "+(i+1)))+'</button>';
+  }).join("");
+}
+
+function renderTabs(){
+  document.getElementById("tabs").innerHTML=TABS.map(function(t){
+    return '<button class="'+(tab===t[0]?"act":"")+'" onclick="tab=\''+t[0]+'\';expL=null;renderBody();renderTabs();">'+t[1]+'</button>';
+  }).join("");
+}
+
+function renderBody(){
+  var b=B();
+  var h='';
+
+  if(tab==="header"){
+    h+='<div class="card"><div class="ctitle">Boring Header</div>';
+    h+='<div class="row">'+field("Boring ID",inp("id",b.id,"SB-1"),true)+field("Date",inp("date_start",b.date_start,"03/10/2026"),true)+'</div>';
+    h+='<div class="row">'+field("Location",inp("location",b.location,"Marine Drive NE"),true)+field("City, State",inp("city",b.city,"Olympia, WA"),true)+'</div>';
+    h+=field("Drill Company",inp("drill_co",b.drill_co,"Cascade Drilling"));
+    h+='<div class="row">'+field("Method",sel("method",b.method,METHODS),true)+field("Equipment",inp("equipment",b.equipment,"Rig 06-10008"),true)+'</div>';
+    h+='<div class="row">'+field("Field Rep",inp("field_rep",b.field_rep,"MK / MT"),true)+field("Driller(s)",inp("drillers",b.drillers||"","Joshua, Eder"),true)+'</div>';
+    h+='<div class="dvd"></div><div class="stitle">Depth and Groundwater</div>';
+    h+='<div class="row">'+field("Total Depth (ft)",sel("total_depth",b.total_depth,TD_OPTS.map(function(d){return[d,d+" ft"];})),true)+field("GW Depth (ft)",inp("gw_first",b.gw_first,"6.0 or N/A"),true)+'</div>';
+    h+='<div class="row">'+field("GW After",inp("gw_second",b.gw_second,"N/A"),true)+field("Backfill",sel("backfill",b.backfill,BF_OPTS),true)+'</div>';
+    h+=field("Screen Interval",inp("screen_interval",b.screen_interval,"N/A or 11-15"));
+    h+='</div>';
+  }
+
+  else if(tab==="samplers"){
+    h+='<div class="card"><div class="ctitle">Sampler Runs ('+(b.samplers||[]).length+')</div>';
+    (b.samplers||[]).forEach(function(s,i){
+      h+='<div class="item"><div class="ihdr"><span class="inum">Run #'+(i+1)+'</span><button class="dbtn" onclick="delArr(\'samplers\','+i+')">X</button></div>';
+      h+='<div class="row">'+field("Top (ft)",sel("samplers."+i+".top",s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Bot (ft)",sel("samplers."+i+".bot",s.bot,DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
+      h+='<div class="row">'+field("Tool Len (ft)",sel("samplers."+i+".tool_len",s.tool_len,TLENS.map(function(d){return[d,d];})),true)+field("Recovery (in)",sel("samplers."+i+".recovery",s.recovery,RECOV.map(function(d){return[d,d||"-- select --"];})),true)+'</div>';
+      h+='</div>';
+    });
+    var lastS=b.samplers[b.samplers.length-1];var nt=lastS?lastS.bot:0;
+    h+='<button class="btn btn-blue" onclick="addArr(\'samplers\',{top:'+nt+',bot:'+(nt+5)+',tool_len:5,recovery:\'\'})">+ Add Sampler Run</button></div>';
+  }
+
+  else if(tab==="pid"){
+    h+='<div class="card"><div class="ctitle">PID Readings ('+(b.pid||[]).length+')</div>';
+    (b.pid||[]).forEach(function(p,i){
+      h+='<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px">';
+      h+=field(i===0?"Depth (ft)":"\u00A0",sel("pid."+i+".depth",p.depth,DEPTHS.map(function(d){return[d,d];})),true);
+      h+=field(i===0?"Reading (ppm)":"\u00A0",inp("pid."+i+".reading",p.reading,"0.18"),true);
+      h+='<button class="dbtn" style="margin-bottom:2px" onclick="delArr(\'pid\','+i+')">X</button></div>';
+    });
+    var lastP=b.pid[b.pid.length-1];var nd=lastP?+lastP.depth+2:1;
+    h+='<button class="btn btn-blue" onclick="addArr(\'pid\',{depth:'+nd+',reading:\'\'})">+ Add PID Reading</button></div>';
+  }
+
+  else if(tab==="litho"){
+    h+='<div class="card"><div class="ctitle">Soil Layers ('+(b.lithology||[]).length+')</div>';
+    (b.lithology||[]).forEach(function(l,i){
+      var cl=classify(l.gr,l.sa,l.fi);
+      var isExp=expL===i;
+      var tot=l.gr+l.sa+l.fi;
+      h+='<div class="item" style="border:'+(isExp?"2px solid #60a5fa":"1px solid #334155")+'">';
+      h+='<div class="lbar" onclick="expL='+(isExp?"null":i)+';renderBody()">';
+      h+='<div class="lsw" style="background:'+(UC[l.uscs]||"#666")+'"></div>';
+      h+='<div style="flex:1;overflow:hidden"><div style="font-size:13px;font-weight:700;color:#e2e8f0">'+l.top+' - '+l.bot+' ft '+esc(l.uscs)+'</div>';
+      h+='<div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.description||"(tap to edit)")+'</div></div>';
+      h+='<span style="font-size:20px;color:#64748b;padding:0 4px">'+(isExp?"▲":"▼")+'</span>';
+      h+='<button class="dbtn" onclick="event.stopPropagation();delArr(\'lithology\','+i+')">X</button>';
+      h+='</div>';
+      if(isExp){
+        h+='<div style="margin-top:12px">';
+        h+='<div class="row">'+field("Top (ft)",sel("lithology."+i+".top",l.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Bot (ft)",sel("lithology."+i+".bot",l.bot,DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
+        h+='<div class="stitle">Composition (must = 100%)</div>';
+        h+='<div class="row">'+field("% Gravel",sel("lithology."+i+".gr",l.gr,PCTS.map(function(d){return[d,d];})),true)+field("% Sand",sel("lithology."+i+".sa",l.sa,PCTS.map(function(d){return[d,d];})),true)+'</div>';
+        h+='<div class="row">'+field("% Fines",sel("lithology."+i+".fi",l.fi,PCTS.map(function(d){return[d,d];})),true)+'<div class="c50"><div class="'+(tot===100?"tok":"tbad")+'">Total: '+tot+'% '+(tot===100?"OK":"not 100")+'</div></div></div>';
+        h+='<div class="acls">Auto: <b>'+esc(cl.n)+" ("+esc(cl.s)+")"+'</b></div>';
+        h+=field("USCS Symbol",sel("lithology."+i+".uscs",l.uscs,USCS_LIST.map(function(u){return[u[0],u[0]+" - "+u[1]];})));
+        h+='<div class="stitle">Description Builder</div>';
+        h+='<div class="row">'+field("Color",sel("lithology."+i+"._color",l._color||"",COLORS.map(function(c){return[c,c||"-- select --"];})),true)+field("Moisture",sel("lithology."+i+"._moisture",l._moisture||"",MOISTURES.map(function(c){return[c,c||"-- select --"];})),true)+'</div>';
+        h+='<div class="row">'+field("Gradation",sel("lithology."+i+"._grad",l._grad||"",GRADS.map(function(c){return[c,c||"-- select --"];})),true)+field("Structure",sel("lithology."+i+"._struct",l._struct||"massive",STRUCTS.map(function(c){return[c,c];})),true)+'</div>';
+        h+=field("Extras",sel("lithology."+i+"._extra",l._extra||"",EXTRAS.map(function(c){return[c,c||"-- none --"];})));
+        h+='<button class="btn btn-teal" onclick="autoDesc('+i+')">Auto-Generate Description</button>';
+        h+='<div style="margin-top:8px">'+field("Description",'<textarea class="ta" rows="3" onchange="handleChange(\'lithology.'+i+'.description\',this.value)">'+esc(l.description)+'</textarea>')+'</div>';
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    var lastL=b.lithology[b.lithology.length-1];var lt=lastL?lastL.bot:0;
+    h+='<button class="btn btn-blue" onclick="addLitho('+lt+')">+ Add Soil Layer</button></div>';
+  }
+
+  else if(tab==="samples"){
+    h+='<div class="card"><div class="ctitle">Soil Samples ('+(b.samples||[]).length+')</div>';
+    (b.samples||[]).forEach(function(s,i){
+      h+='<div class="item">';
+      h+='<div class="row">'+field("Interval",inp("samples."+i+".interval",s.interval,"4-5"),true)+field("Time",inp("samples."+i+".time",s.time,"1430"),true)+'</div>';
+      h+='<div style="display:flex;gap:8px;align-items:flex-end">';
+      h+=field("Type",sel("samples."+i+".type",s.type,STYPES.map(function(t){return[t,t];})),true);
+      h+='<div style="display:flex;align-items:center;gap:8px;padding-bottom:4px">';
+      h+='<label style="font-size:14px;color:#cbd5e1;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(s.dup?"checked":"")+' onchange="handleChange(\'samples.'+i+'.dup\',this.checked)" style="width:22px;height:22px"> DUP</label>';
+      h+='<button class="dbtn" onclick="delArr(\'samples\','+i+')">X</button></div></div>';
+      h+='</div>';
+    });
+    h+='<button class="btn btn-blue" onclick="addArr(\'samples\',{interval:\'\',type:\'SO\',time:\'\',dup:false})">+ Add Soil Sample</button></div>';
+  }
+
+  else if(tab==="gw"){
+    h+='<div class="card"><div class="ctitle">GW Samples ('+(b.gw_samples||[]).length+')</div>';
+    (b.gw_samples||[]).forEach(function(g,i){
+      h+='<div class="item">';
+      h+='<div class="row">'+field("Screen (ft-ft)",inp("gw_samples."+i+".screen",g.screen,"11-15"),true)+field("Time",inp("gw_samples."+i+".time",g.time,"1045"),true)+'</div>';
+      h+='<div style="display:flex;gap:8px;align-items:flex-end"><div style="flex:1">'+field("Remarks",inp("gw_samples."+i+".remarks",g.remarks,"No odors or sheen."))+'</div>';
+      h+='<button class="dbtn" style="margin-bottom:2px" onclick="delArr(\'gw_samples\','+i+')">X</button></div>';
+      h+='</div>';
+    });
+    h+='<button class="btn btn-blue" onclick="addArr(\'gw_samples\',{screen:\'\',time:\'\',remarks:\'\'})">+ Add GW Sample</button></div>';
+  }
+
+  else if(tab==="remarks"){
+    h+='<div class="card"><div class="ctitle">Remarks and Notes</div>';
+    h+=field("Field Remarks",'<textarea class="ta" rows="3" placeholder="No odors or staining." onchange="upd(\'remarks\',this.value)">'+esc(b.remarks)+'</textarea>');
+    h+='<div style="height:10px"></div>';
+    h+=field("General Notes",'<textarea class="ta" rows="3" placeholder="Humidity may affect PID readings." onchange="upd(\'general_notes\',this.value)">'+esc(b.general_notes)+'</textarea>');
+    h+='</div>';
+  }
+
+  else if(tab==="summary"){
+    h+='<div class="card"><div class="ctitle">Log Summary - '+(b.id||"?")+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;line-height:1.8">';
+    h+='<div><b style="color:#e2e8f0">'+esc(b.id)+'</b> | '+esc(b.date_start)+' | '+esc(b.location)+', '+esc(b.city)+'</div>';
+    h+='<div>'+esc(b.drill_co)+' | '+esc(b.method)+' | '+esc(b.equipment)+'</div>';
+    h+='<div>TD: '+b.total_depth+' ft | GW: '+esc(b.gw_first)+' ft | Rep: '+esc(b.field_rep)+'</div></div>';
+    h+='<div class="dvd"></div><div class="stitle">Soil Profile</div>';
+    (b.lithology||[]).forEach(function(l){
+      h+='<div class="slay"><div class="ssw" style="background:'+(UC[l.uscs]||"#666")+'">'+esc(l.uscs)+'</div>';
+      h+='<div style="flex:1"><div style="font-size:12px;font-weight:700;color:#e2e8f0">'+l.top+' - '+l.bot+' ft</div>';
+      h+='<div style="font-size:11px;color:#cbd5e1">'+esc(l.description)+'</div>';
+      h+='<div style="font-size:10px;color:#64748b">GR:'+l.gr+'% SA:'+l.sa+'% FI:'+l.fi+'%</div></div></div>';
+    });
+    h+='<div class="dvd"></div><div style="font-size:12px;color:#94a3b8">';
+    h+='<div>Samplers: '+(b.samplers||[]).length+' runs</div>';
+    h+='<div>PID: '+(b.pid||[]).length+' readings</div>';
+    h+='<div>Soil samples: '+(b.samples||[]).length+'</div>';
+    h+='<div>GW samples: '+(b.gw_samples||[]).length+'</div></div>';
+    if(b.remarks) h+='<div style="margin-top:8px;font-size:12px;color:#fbbf24;font-style:italic">'+esc(b.remarks)+'</div>';
+    h+='<button class="btn btn-blue" style="margin-top:16px" onclick="doSave()">Save JSON</button>';
+    h+='</div>';
+  }
+
+  document.getElementById("body").innerHTML=h;
+  renderBsel();
+}
+
+window.addLitho=function(t){
+  borings[bi].lithology.push({top:t,bot:t+5,description:"",uscs:"SM",gr:0,sa:70,fi:30,_color:"brown",_moisture:"moist",_grad:"fine to coarse",_struct:"massive",_extra:""});
+  expL=borings[bi].lithology.length-1;
+  renderBody();
+};
+
+window.autoDesc=function(idx){
+  var l=borings[bi].lithology[idx];
+  var cl=classify(l.gr,l.sa,l.fi);
+  var nm=cl.n;var ex=l._extra||"";
+  if(ex&&nm.indexOf(ex)<0)nm=nm+" "+ex;
+  var desc=buildDesc(nm,cl.s,l._color||"",l._moisture||"",l._grad||"",l._struct||"massive");
+  borings[bi].lithology[idx].description=desc;
+  borings[bi].lithology[idx].uscs=cl.s;
+  renderBody();
+};
+
+renderAll();
+</script>
+</body>
+</html>
