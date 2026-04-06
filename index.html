@@ -481,15 +481,48 @@ function renderBody(){
   }
 
   else if(tab==="samples"){
+    var zones=getRecoveredZones(b);
+    var hasZones=zones.length>0;
+    // Build suggested intervals from recovered zones
+    var suggested=[];
+    zones.forEach(function(z){
+      var t=Math.floor(z.top),bz=Math.floor(z.bot);
+      for(var d=t;d<bz;d++){
+        var st=Math.max(d,z.top),sb=Math.min(d+1,z.bot);
+        if(sb-st>=0.5) suggested.push(st+"-"+sb);
+      }
+    });
+
     h+='<div class="card"><div class="ctitle">Soil Samples ('+(b.samples||[]).length+')</div>';
+    if(hasZones){
+      h+='<div style="font-size:11px;color:#86efac;margin-bottom:8px">Recovered zones: ';
+      h+=zones.map(function(z){return z.top+'–'+z.bot+' ft';}).join(', ');
+      h+='</div>';
+    }
     (b.samples||[]).forEach(function(s,i){
-      h+='<div class="item">';
-      h+='<div class="row">'+field("Interval",inp("samples."+i+".interval",s.interval,"4-5"),true)+field("Time",inp("samples."+i+".time",s.time,"1430"),true)+'</div>';
+      // Validate interval against recovery
+      var valid=true;var validMsg="";
+      if(hasZones&&s.interval){
+        var parts=s.interval.split("-").map(Number);
+        if(parts.length===2&&!isNaN(parts[0])&&!isNaN(parts[1])){
+          valid=isInRecoveredZone(b,parts[0],parts[1]);
+          if(!valid) validMsg="Cannot collect sample from area not logged as recovered. Check Core Log tab to verify recovery intervals.";
+        }
+      }
+      h+='<div class="item" style="border:1px solid '+(valid?"#334155":"#dc2626")+'">';
+      h+='<div class="row">';
+      // Interval field with suggested recovered intervals
+      var intOpts=suggested.map(function(si){return[si,si];});
+      h+=field("Interval",sel("samples."+i+".interval",s.interval,intOpts),true);
+      h+=field("Time",inp("samples."+i+".time",s.time,"1430"),true)+'</div>';
       h+='<div style="display:flex;gap:8px;align-items:flex-end">';
       h+=field("Type",sel("samples."+i+".type",s.type,STYPES.map(function(t){return[t,t];})),true);
       h+='<div style="display:flex;align-items:center;gap:8px;padding-bottom:4px">';
       h+='<label style="font-size:14px;color:#cbd5e1;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(s.dup?"checked":"")+' onchange="handleChange(\'samples.'+i+'.dup\',this.checked)" style="width:22px;height:22px"> DUP</label>';
       h+='<button class="dbtn" onclick="delArr(\'samples\','+i+')">X</button></div></div>';
+      if(!valid){
+        h+='<div style="background:#7f1d1d;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#fca5a5;font-weight:600">'+esc(validMsg)+'</div>';
+      }
       h+='</div>';
     });
     h+='<button class="btn btn-blue" onclick="addArr(\'samples\',{interval:\'\',type:\'SO\',time:\'\',dup:false})">+ Add Soil Sample</button></div>';
