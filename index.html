@@ -146,6 +146,33 @@ function buildDesc(nm,sym,col,moi,grd,str){
 
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2000);}
 
+// Returns array of {top, bot} objects representing recovered depth intervals
+function getRecoveredZones(b){
+  var zones=[];
+  (b.samplers||[]).forEach(function(s){
+    if(s.recovery==="NR"||s.recovery==="N/A"||!s.recovery) return;
+    var recIn=parseFloat(s.recovery);
+    if(isNaN(recIn)||recIn<=0) return;
+    var recFt=recIn/12;
+    if(s.custom_interval&&s.recov_top!=null&&s.recov_bot!=null){
+      zones.push({top:parseFloat(s.recov_top),bot:parseFloat(s.recov_bot)});
+    } else {
+      zones.push({top:parseFloat(s.top),bot:parseFloat(s.top)+recFt});
+    }
+  });
+  return zones;
+}
+
+// Check if a sample interval falls within recovered zones
+function isInRecoveredZone(b,sampTop,sampBot){
+  var zones=getRecoveredZones(b);
+  if(zones.length===0) return true; // no recovery data entered yet, allow
+  for(var i=0;i<zones.length;i++){
+    if(sampTop>=zones[i].top&&sampBot<=zones[i].bot) return true;
+  }
+  return false;
+}
+
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 // ===== INIT =====
@@ -290,10 +317,10 @@ window.handleChange=function(id,val){
     borings[bi][f]=val;
   }else if(parts.length===3){
     var arr=parts[0],idx=+parts[1],fld=parts[2];
-    if(["top","bot","tool_len","depth","gr","sa","fi"].indexOf(fld)>=0){
+    if(["top","bot","tool_len","depth","gr","sa","fi","recov_top","recov_bot"].indexOf(fld)>=0){
       val=parseFloat(val);if(isNaN(val))val=0;
     }
-    if(fld==="dup")val=(val==="true"||val===true);
+    if(fld==="dup"||fld==="custom_interval")val=(val==="true"||val===true);
     borings[bi][arr][idx][fld]=val;
   }
   renderBody();
@@ -369,15 +396,36 @@ function renderBody(){
   }
 
   else if(tab==="samplers"){
-    h+='<div class="card"><div class="ctitle">Sampler Runs ('+(b.samplers||[]).length+')</div>';
+    h+='<div class="card"><div class="ctitle">Core Runs ('+(b.samplers||[]).length+')</div>';
     (b.samplers||[]).forEach(function(s,i){
-      h+='<div class="item"><div class="ihdr"><span class="inum">Run #'+(i+1)+'</span><button class="dbtn" onclick="delArr(\'samplers\','+i+')">X</button></div>';
+      var recIn=parseFloat(s.recovery);
+      var runFt=(s.bot||0)-(s.top||0);
+      var recFt=(!isNaN(recIn)&&recIn>0)?(recIn/12):0;
+      var recZone="";
+      if(s.recovery==="NR"||recFt===0){recZone="No recovery";}
+      else if(s.custom_interval){recZone=(s.recov_top!=null?s.recov_top:s.top)+" – "+(s.recov_bot!=null?s.recov_bot:(s.top+recFt).toFixed(1))+" ft";}
+      else{recZone=s.top+" – "+(s.top+recFt).toFixed(1)+" ft";}
+
+      h+='<div class="item"><div class="ihdr"><span class="inum">Run #'+(i+1)+' &nbsp;<span style="font-size:11px;color:#94a3b8">'+(s.top||0)+'–'+(s.bot||0)+' ft</span></span><button class="dbtn" onclick="delArr(\'samplers\','+i+')">X</button></div>';
       h+='<div class="row">'+field("Top (ft)",sel("samplers."+i+".top",s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Bot (ft)",sel("samplers."+i+".bot",s.bot,DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
       h+='<div class="row">'+field("Tool Len (ft)",sel("samplers."+i+".tool_len",s.tool_len,TLENS.map(function(d){return[d,d];})),true)+field("Recovery (in)",sel("samplers."+i+".recovery",s.recovery,RECOV.map(function(d){return[d,d||"-- select --"];})),true)+'</div>';
+
+      if(s.recovery&&s.recovery!=="NR"&&s.recovery!=="N/A"&&recFt>0){
+        h+='<div style="background:#0f172a;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px">';
+        h+='<div style="color:#86efac;font-weight:600">Recovered: '+recZone+' ('+recFt.toFixed(1)+' of '+runFt+' ft)</div>';
+        h+='<label style="display:flex;align-items:center;gap:8px;margin-top:8px;color:#cbd5e1;font-size:13px">';
+        h+='<input type="checkbox" '+(s.custom_interval?"checked":"")+' onchange="updArr(\'samplers\','+i+',{custom_interval:this.checked})" style="width:22px;height:22px;flex-shrink:0"> Specified recovery interval</label>';
+        if(s.custom_interval){
+          h+='<div class="row" style="margin-top:8px">'+field("Recov Top (ft)",sel("samplers."+i+".recov_top",s.recov_top!=null?s.recov_top:s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Recov Bot (ft)",sel("samplers."+i+".recov_bot",s.recov_bot!=null?s.recov_bot:(parseFloat(s.top)+recFt).toFixed(1),DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
+        }
+        h+='</div>';
+      } else if(s.recovery==="NR"){
+        h+='<div style="background:#7f1d1d;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#fca5a5;font-weight:600">No recovery '+(s.top||0)+'–'+(s.bot||0)+' ft</div>';
+      }
       h+='</div>';
     });
     var lastS=b.samplers[b.samplers.length-1];var nt=lastS?lastS.bot:0;
-    h+='<button class="btn btn-blue" onclick="addArr(\'samplers\',{top:'+nt+',bot:'+(nt+5)+',tool_len:5,recovery:\'\'})">+ Add Sampler Run</button></div>';
+    h+='<button class="btn btn-blue" onclick="addArr(\'samplers\',{top:'+nt+',bot:'+(nt+5)+',tool_len:5,recovery:\'\',custom_interval:false,recov_top:null,recov_bot:null})">+ Add Core Run</button></div>';
   }
 
   else if(tab==="pid"){
@@ -477,7 +525,7 @@ function renderBody(){
       h+='<div style="font-size:10px;color:#64748b">GR:'+l.gr+'% SA:'+l.sa+'% FI:'+l.fi+'%</div></div></div>';
     });
     h+='<div class="dvd"></div><div style="font-size:12px;color:#94a3b8">';
-    h+='<div>Samplers: '+(b.samplers||[]).length+' runs</div>';
+    h+='<div>Core runs: '+(b.samplers||[]).length+'</div>';
     h+='<div>PID: '+(b.pid||[]).length+' readings</div>';
     h+='<div>Soil samples: '+(b.samples||[]).length+'</div>';
     h+='<div>GW samples: '+(b.gw_samples||[]).length+'</div></div>';
