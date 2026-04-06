@@ -127,7 +127,7 @@ let borings=[], bi=0, tab="header", expL=null;
 try{const saved=null;}catch(e){} // placeholder - no localStorage in some contexts
 
 function mkBlank(){
-  return {id:"",location:"",city:"",drill_co:"",date_start:"",method:"Direct Push",equipment:"",total_depth:15,gw_first:"N/A",gw_second:"N/A",field_rep:"",backfill:"Bentonite",screen_interval:"N/A",drillers:"",samplers:[],pid:[],lithology:[],samples:[],gw_samples:[],remarks:"",general_notes:""};
+  return {id:"",location:"",city:"",drill_co:"",date_start:"",method:"Direct Push",equipment:"",total_depth:15,gw_first:"N/A",gw_second:"N/A",field_rep:"",backfill:"Bentonite",screen_interval:"N/A",drillers:"",lat:"",lon:"",elevation:"",samplers:[],pid:[],lithology:[],samples:[],gw_samples:[],remarks:"",general_notes:""};
 }
 
 function classify(gr,sa,fi){
@@ -145,6 +145,69 @@ function buildDesc(nm,sym,col,moi,grd,str){
 }
 
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2000);}
+
+// GPS capture — averages readings over 15 seconds for better accuracy
+var _gpsWatchId=null;
+var _gpsReadings=[];
+var _gpsTimer=null;
+window.captureGPS=function(){
+  if(!navigator.geolocation){toast("GPS not available on this device");return;}
+  _gpsReadings=[];
+  toast("Capturing GPS — hold still for 15 seconds...");
+  document.getElementById("gpsBtn").textContent="Capturing... 15s";
+  document.getElementById("gpsBtn").disabled=true;
+  var countdown=15;
+  _gpsWatchId=navigator.geolocation.watchPosition(function(pos){
+    _gpsReadings.push({lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,alt:pos.coords.altitude});
+  },function(err){
+    toast("GPS error: "+err.message);
+    stopGPS();
+  },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+
+  _gpsTimer=setInterval(function(){
+    countdown--;
+    var btn=document.getElementById("gpsBtn");
+    if(btn) btn.textContent="Capturing... "+countdown+"s";
+    if(countdown<=0) finishGPS();
+  },1000);
+};
+
+function finishGPS(){
+  stopGPS();
+  if(_gpsReadings.length===0){toast("No GPS readings captured");return;}
+  // Average all readings
+  var sumLat=0,sumLon=0,sumAlt=0,altCount=0;
+  _gpsReadings.forEach(function(r){sumLat+=r.lat;sumLon+=r.lon;if(r.alt!=null){sumAlt+=r.alt;altCount++;}});
+  var avgLat=(sumLat/_gpsReadings.length).toFixed(6);
+  var avgLon=(sumLon/_gpsReadings.length).toFixed(6);
+  borings[bi].lat=avgLat;
+  borings[bi].lon=avgLon;
+  if(altCount>0) borings[bi].elevation=(sumAlt/altCount).toFixed(1);
+  toast("GPS captured: "+_gpsReadings.length+" readings averaged");
+  // Try USGS elevation lookup
+  fetchElevation(avgLat,avgLon);
+  renderBody();
+}
+
+function stopGPS(){
+  if(_gpsWatchId!=null){navigator.geolocation.clearWatch(_gpsWatchId);_gpsWatchId=null;}
+  if(_gpsTimer){clearInterval(_gpsTimer);_gpsTimer=null;}
+  var btn=document.getElementById("gpsBtn");
+  if(btn){btn.textContent="Capture GPS";btn.disabled=false;}
+}
+
+function fetchElevation(lat,lon){
+  fetch("https://epqs.nationalmap.gov/v1/json?x="+lon+"&y="+lat+"&units=Feet&wkid=4326&includeDate=false")
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(d&&d.value!=null){
+      borings[bi].elevation=parseFloat(d.value).toFixed(1);
+      toast("Elevation: "+borings[bi].elevation+" ft (USGS)");
+      renderBody();
+    }
+  })
+  .catch(function(){/* offline — use GPS altitude if available */});
+}
 
 // Returns array of {top, bot} objects representing recovered depth intervals
 function getRecoveredZones(b){
@@ -396,6 +459,13 @@ function renderBody(){
     h+='<div class="row">'+field("Total Depth (ft)",sel("total_depth",b.total_depth,TD_OPTS.map(function(d){return[d,d+" ft"];})),true)+field("GW Depth (ft)",inp("gw_first",b.gw_first,"6.0 or N/A"),true)+'</div>';
     h+='<div class="row">'+field("GW After",inp("gw_second",b.gw_second,"N/A"),true)+field("Backfill",sel("backfill",b.backfill,BF_OPTS),true)+'</div>';
     h+=field("Screen Interval",inp("screen_interval",b.screen_interval,"N/A or 11-15"));
+    h+='<div class="dvd"></div><div class="stitle">Location (GPS)</div>';
+    h+='<button id="gpsBtn" class="btn btn-blue" style="margin-bottom:10px" onclick="captureGPS()">Capture GPS</button>';
+    h+='<div class="row">'+field("Latitude",inp("lat",b.lat,"--"),true)+field("Longitude",inp("lon",b.lon,"--"),true)+'</div>';
+    h+=field("Elevation (ft)",inp("elevation",b.elevation,"--"));
+    if(b.lat&&b.lon){
+      h+='<div style="margin-top:6px;font-size:11px;color:#86efac">Coordinates captured: '+esc(b.lat)+', '+esc(b.lon)+(b.elevation?' · Elev: '+esc(b.elevation)+' ft':'')+'</div>';
+    }
     h+='</div>';
   }
 
