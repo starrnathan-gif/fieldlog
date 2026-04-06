@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fieldlog-v2';
+const CACHE_NAME = 'fieldlog-v3';
 const URLS_TO_CACHE = [
   './',
   './index.html',

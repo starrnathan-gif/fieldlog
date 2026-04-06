@@ -119,7 +119,7 @@ const RECOV=["","6","12","18","24","30","36","42","48","54","60","NR","N/A"];
 const STYPES=["SO","GW","GP","SH","GT"];
 const TD_OPTS=[5,10,15,20,25,30,35,40,50];
 const BF_OPTS=["Bentonite","Cement/Bentonite","Cuttings","Grout","Other"];
-const TABS=[["header","Header"],["samplers","Samplers"],["pid","PID"],["litho","Soils"],["samples","Samples"],["gw","GW"],["remarks","Notes"],["summary","Summary"]];
+const TABS=[["borings","Borings"],["header","Header"],["samplers","Core Log"],["pid","PID"],["litho","Soils"],["samples","Samples"],["gw","GW"],["remarks","Notes"],["summary","Summary"]];
 
 let borings=[], bi=0, tab="header", expL=null;
 
@@ -306,7 +306,7 @@ function renderAll(){
 
 function renderBsel(){
   var el=document.getElementById("bsel");
-  if(borings.length<=1){el.style.display="none";return;}
+  if(borings.length<=1||tab==="borings"){el.style.display="none";return;}
   el.style.display="flex";
   el.innerHTML=borings.map(function(br,i){
     return '<button class="'+(i===bi?"act":"")+'" onclick="bi='+i+';expL=null;renderAll()">'+esc(br.id||("Boring "+(i+1)))+'</button>';
@@ -315,7 +315,9 @@ function renderBsel(){
 
 function renderTabs(){
   document.getElementById("tabs").innerHTML=TABS.map(function(t){
-    return '<button class="'+(tab===t[0]?"act":"")+'" onclick="tab=\''+t[0]+'\';expL=null;renderBody();renderTabs();">'+t[1]+'</button>';
+    var label=t[1];
+    if(t[0]==="borings"&&borings.length>1) label=t[1]+" ("+borings.length+")";
+    return '<button class="'+(tab===t[0]?"act":"")+'" onclick="tab=\''+t[0]+'\';expL=null;renderBody();renderTabs();">'+label+'</button>';
   }).join("");
 }
 
@@ -324,7 +326,35 @@ function renderBody(){
   var b=B();
   var h='';
 
-  if(tab==="header"){
+  if(tab==="borings"){
+    h+='<div class="card"><div class="ctitle">Borings ('+borings.length+')</div>';
+    borings.forEach(function(br,i){
+      var isActive=i===bi;
+      h+='<div class="item" style="border:'+(isActive?"2px solid #60a5fa":"1px solid #334155")+';cursor:pointer" onclick="bi='+i+';tab=\'header\';expL=null;renderAll()">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center">';
+      h+='<div>';
+      h+='<div style="font-size:14px;font-weight:700;color:'+(isActive?"#60a5fa":"#e2e8f0")+'">'+esc(br.id||("Boring "+(i+1)))+'</div>';
+      var details=[];
+      if(br.date_start) details.push(br.date_start);
+      if(br.total_depth) details.push(br.total_depth+" ft TD");
+      if(br.location) details.push(br.location);
+      h+='<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+esc(details.join(" · ")||"No details entered")+'</div>';
+      var counts=[];
+      counts.push((br.lithology||[]).length+" layers");
+      counts.push((br.pid||[]).length+" PID");
+      counts.push((br.samples||[]).length+" samples");
+      h+='<div style="font-size:10px;color:#64748b;margin-top:2px">'+esc(counts.join(" · "))+'</div>';
+      h+='</div>';
+      h+='<div style="display:flex;gap:6px;align-items:center">';
+      if(isActive) h+='<span style="background:#1e3a5f;color:#60a5fa;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700">ACTIVE</span>';
+      if(borings.length>1) h+='<button class="dbtn" style="font-size:14px;padding:6px 10px" onclick="event.stopPropagation();if(confirm(\'Delete '+esc(br.id||"this boring")+'?\')){borings.splice('+i+',1);bi=Math.max(0,Math.min(bi,borings.length-1));renderAll();}">X</button>';
+      h+='</div></div></div>';
+    });
+    h+='<button class="btn btn-blue" style="margin-top:12px" onclick="doAddBoring()">+ New Boring</button>';
+    h+='</div>';
+  }
+
+  else if(tab==="header"){
     h+='<div class="card"><div class="ctitle">Boring Header</div>';
     h+='<div class="row">'+field("Boring ID",inp("id",b.id,"SB-1"),true)+field("Date",inp("date_start",b.date_start,"03/10/2026"),true)+'</div>';
     h+='<div class="row">'+field("Location",inp("location",b.location,"Marine Drive NE"),true)+field("City, State",inp("city",b.city,"Olympia, WA"),true)+'</div>';
