@@ -114,8 +114,8 @@ const EXTRAS=["","with crushed shells","with woody debris","with cobbles","with 
 const METHODS=["Direct Push","Hollow Stem Auger","Sonic","Rotary","Hand Auger","Test Pit"];
 const DEPTHS=[0,.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12,12.5,13,13.5,14,14.5,15,16,17,17.5,18,19,20,21,22,22.5,23,24,25,26,27,28,29,30,35,40,50];
 const PCTS=[0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
-const TLENS=[2,2.5,3,4,5,10];
-const RECOV=["","6","12","18","24","30","36","42","48","54","60","NR","N/A"];
+const CLENS=[2,2.5,3,4,5,10];
+const RECOV_FT=["",0.25,0.5,0.75,1,1.25,1.5,1.75,2,2.25,2.5,2.75,3,3.25,3.5,3.75,4,4.25,4.5,4.75,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,"NR","N/A"];
 const STYPES=["SO","GW","GP","SH","GT"];
 const TD_OPTS=[5,10,15,20,25,30,35,40,50];
 const BF_OPTS=["Bentonite","Cement/Bentonite","Cuttings","Grout","Other"];
@@ -151,9 +151,8 @@ function getRecoveredZones(b){
   var zones=[];
   (b.samplers||[]).forEach(function(s){
     if(s.recovery==="NR"||s.recovery==="N/A"||!s.recovery) return;
-    var recIn=parseFloat(s.recovery);
-    if(isNaN(recIn)||recIn<=0) return;
-    var recFt=recIn/12;
+    var recFt=parseFloat(s.recovery);
+    if(isNaN(recFt)||recFt<=0) return;
     if(s.custom_interval&&s.recov_top!=null&&s.recov_bot!=null){
       zones.push({top:parseFloat(s.recov_top),bot:parseFloat(s.recov_bot)});
     } else {
@@ -322,6 +321,11 @@ window.handleChange=function(id,val){
     }
     if(fld==="dup"||fld==="custom_interval")val=(val==="true"||val===true);
     borings[bi][arr][idx][fld]=val;
+    // Auto-populate bot from top + core length
+    if(arr==="samplers"&&(fld==="top"||fld==="tool_len")){
+      var sm=borings[bi].samplers[idx];
+      sm.bot=(parseFloat(sm.top)||0)+(parseFloat(sm.tool_len)||5);
+    }
   }
   renderBody();
 };
@@ -398,25 +402,25 @@ function renderBody(){
   else if(tab==="samplers"){
     h+='<div class="card"><div class="ctitle">Core Runs ('+(b.samplers||[]).length+')</div>';
     (b.samplers||[]).forEach(function(s,i){
-      var recIn=parseFloat(s.recovery);
+      var recFt=parseFloat(s.recovery);
       var runFt=(s.bot||0)-(s.top||0);
-      var recFt=(!isNaN(recIn)&&recIn>0)?(recIn/12):0;
+      if(isNaN(recFt)||recFt<=0) recFt=0;
       var recZone="";
       if(s.recovery==="NR"||recFt===0){recZone="No recovery";}
-      else if(s.custom_interval){recZone=(s.recov_top!=null?s.recov_top:s.top)+" – "+(s.recov_bot!=null?s.recov_bot:(s.top+recFt).toFixed(1))+" ft";}
-      else{recZone=s.top+" – "+(s.top+recFt).toFixed(1)+" ft";}
+      else if(s.custom_interval){recZone=(s.recov_top!=null?s.recov_top:s.top)+" – "+(s.recov_bot!=null?s.recov_bot:(parseFloat(s.top)+recFt).toFixed(2))+" ft";}
+      else{recZone=s.top+" – "+(parseFloat(s.top)+recFt).toFixed(2)+" ft";}
 
       h+='<div class="item"><div class="ihdr"><span class="inum">Run #'+(i+1)+' &nbsp;<span style="font-size:11px;color:#94a3b8">'+(s.top||0)+'–'+(s.bot||0)+' ft</span></span><button class="dbtn" onclick="delArr(\'samplers\','+i+')">X</button></div>';
-      h+='<div class="row">'+field("Top (ft)",sel("samplers."+i+".top",s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Bot (ft)",sel("samplers."+i+".bot",s.bot,DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
-      h+='<div class="row">'+field("Tool Len (ft)",sel("samplers."+i+".tool_len",s.tool_len,TLENS.map(function(d){return[d,d];})),true)+field("Recovery (in)",sel("samplers."+i+".recovery",s.recovery,RECOV.map(function(d){return[d,d||"-- select --"];})),true)+'</div>';
+      h+='<div class="row">'+field("Top (ft)",sel("samplers."+i+".top",s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Core Length (ft)",sel("samplers."+i+".tool_len",s.tool_len,CLENS.map(function(d){return[d,d];})),true)+'</div>';
+      h+='<div class="row">'+field("Bot (ft)",'<input class="fi" value="'+((s.top||0)+(s.tool_len||5))+'" style="color:#64748b" readonly />',true)+field("Recovery (ft)",sel("samplers."+i+".recovery",s.recovery,RECOV_FT.map(function(d){return[d,d===""?"-- select --":d];})),true)+'</div>';
 
       if(s.recovery&&s.recovery!=="NR"&&s.recovery!=="N/A"&&recFt>0){
         h+='<div style="background:#0f172a;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px">';
-        h+='<div style="color:#86efac;font-weight:600">Recovered: '+recZone+' ('+recFt.toFixed(1)+' of '+runFt+' ft)</div>';
+        h+='<div style="color:#86efac;font-weight:600">Recovered: '+recZone+' ('+recFt+' of '+runFt+' ft)</div>';
         h+='<label style="display:flex;align-items:center;gap:8px;margin-top:8px;color:#cbd5e1;font-size:13px">';
         h+='<input type="checkbox" '+(s.custom_interval?"checked":"")+' onchange="updArr(\'samplers\','+i+',{custom_interval:this.checked})" style="width:22px;height:22px;flex-shrink:0"> Specified recovery interval</label>';
         if(s.custom_interval){
-          h+='<div class="row" style="margin-top:8px">'+field("Recov Top (ft)",sel("samplers."+i+".recov_top",s.recov_top!=null?s.recov_top:s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Recov Bot (ft)",sel("samplers."+i+".recov_bot",s.recov_bot!=null?s.recov_bot:(parseFloat(s.top)+recFt).toFixed(1),DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
+          h+='<div class="row" style="margin-top:8px">'+field("Recov Top (ft)",sel("samplers."+i+".recov_top",s.recov_top!=null?s.recov_top:s.top,DEPTHS.map(function(d){return[d,d];})),true)+field("Recov Bot (ft)",sel("samplers."+i+".recov_bot",s.recov_bot!=null?s.recov_bot:(parseFloat(s.top)+recFt),DEPTHS.map(function(d){return[d,d];})),true)+'</div>';
         }
         h+='</div>';
       } else if(s.recovery==="NR"){
@@ -424,7 +428,7 @@ function renderBody(){
       }
       h+='</div>';
     });
-    var lastS=b.samplers[b.samplers.length-1];var nt=lastS?lastS.bot:0;
+    var lastS=b.samplers[b.samplers.length-1];var nt=lastS?(lastS.top||0)+(lastS.tool_len||5):0;
     h+='<button class="btn btn-blue" onclick="addArr(\'samplers\',{top:'+nt+',bot:'+(nt+5)+',tool_len:5,recovery:\'\',custom_interval:false,recov_top:null,recov_bot:null})">+ Add Core Run</button></div>';
   }
 
