@@ -280,6 +280,111 @@ window.updatePhotoNote=function(idx,val){
   }
 };
 
+// ===== VOICE ENTRY =====
+var _voiceTraining=[]; // stores transcript→fields pairs for future offline parser
+var CLAUDE_API_KEY="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";
+
+var SOIL_PARSE_PROMPT='You are a geotechnical field data parser. Extract soil description fields from the spoken transcript.\n\nReturn ONLY a JSON object with these fields (use "" if not mentioned):\n{\n"color": one of: brown, dark brown, light brown, grayish brown, gray, dark gray, light gray, beige, reddish brown, black, tan, olive\n"moisture": one of: dry, moist, moist to wet, wet\n"gradation": one of: fine, medium, coarse, fine to medium, fine to coarse, medium to coarse, very fine to medium\n"structure": one of: massive, stratified, laminated, homogeneous, fissured, lensed, blocky\n"extra": one of: with crushed shells, with woody debris, with cobbles, with organics, with roots, or ""\n"pct_gravel": number 0-100\n"pct_sand": number 0-100\n"pct_fines": number 0-100\n"top_ft": number or null if not mentioned\n"bot_ft": number or null if not mentioned\n}\n\nRules:\n- Percentages must sum to 100. If only two are given, calculate the third.\n- If they say "silty sand" without percentages, estimate: gravel 0, sand 70, fines 30\n- If they say "sandy silt", estimate: gravel 0, sand 35, fines 65\n- "with gravel" means 10-25% gravel\n- Listen for depth references like "zero to five" or "five to ten feet"\n- Return ONLY the JSON, no other text.';
+
+window.startVoice=function(layerIdx){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast("Speech recognition not available on this browser");return;}
+
+  var recognition=new SR();
+  recognition.continuous=false;
+  recognition.interimResults=false;
+  recognition.lang="en-US";
+
+  var btn=document.getElementById("voiceBtn_"+layerIdx);
+  if(btn){btn.textContent="🎙 Listening...";btn.style.background="#dc2626";}
+
+  recognition.onresult=function(event){
+    var transcript=event.results[0][0].transcript;
+    if(btn){btn.textContent="🎙 Processing...";btn.style.background="#d97706";}
+    toast("Heard: "+transcript.substring(0,40)+"...");
+    parseVoiceWithClaude(transcript,layerIdx);
+  };
+
+  recognition.onerror=function(event){
+    toast("Voice error: "+event.error);
+    if(btn){btn.textContent="🎙 Speak";btn.style.background="#7c3aed";}
+  };
+
+  recognition.onend=function(){
+    if(btn&&btn.textContent==="🎙 Listening..."){
+      btn.textContent="🎙 Speak";btn.style.background="#7c3aed";
+    }
+  };
+
+  recognition.start();
+};
+
+function parseVoiceWithClaude(transcript,layerIdx){
+  fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":CLAUDE_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",
+      max_tokens:500,
+      system:SOIL_PARSE_PROMPT,
+      messages:[{role:"user",content:"Parse this soil description: \""+transcript+"\""}]
+    })
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(data.error){toast("API error: "+data.error.message);resetVoiceBtn(layerIdx);return;}
+    var text=data.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
+    var clean=text.replace(/```json|```/g,"").trim();
+    try{
+      var parsed=JSON.parse(clean);
+      applyVoiceParsed(parsed,layerIdx,transcript);
+    }catch(e){
+      toast("Could not parse AI response");
+      // Store raw transcript in description as fallback
+      borings[bi].lithology[layerIdx].description=transcript;
+      renderBody();
+    }
+    resetVoiceBtn(layerIdx);
+  })
+  .catch(function(err){
+    toast("Network error — are you online?");
+    // Offline fallback: put transcript in description for manual parsing later
+    borings[bi].lithology[layerIdx].description="[VOICE] "+transcript;
+    renderBody();
+    resetVoiceBtn(layerIdx);
+  });
+}
+
+function applyVoiceParsed(p,layerIdx,transcript){
+  var l=borings[bi].lithology[layerIdx];
+  if(p.color) l._color=p.color;
+  if(p.moisture) l._moisture=p.moisture;
+  if(p.gradation) l._grad=p.gradation;
+  if(p.structure) l._struct=p.structure;
+  if(p.extra) l._extra=p.extra;
+  if(p.pct_gravel!=null) l.gr=+p.pct_gravel;
+  if(p.pct_sand!=null) l.sa=+p.pct_sand;
+  if(p.pct_fines!=null) l.fi=+p.pct_fines;
+  if(p.top_ft!=null) l.top=+p.top_ft;
+  if(p.bot_ft!=null) l.bot=+p.bot_ft;
+  // Auto-classify and generate description
+  var cl=classify(l.gr,l.sa,l.fi);
+  l.uscs=cl.s||l.uscs;
+  var nm=cl.n;
+  if(l._extra&&nm.indexOf(l._extra)<0) nm=nm+" "+l._extra;
+  l.description=buildDesc(nm,l.uscs,l._color||"",l._moisture||"",l._grad||"",l._struct||"massive");
+  l._voiceTranscript=transcript;
+  // Store training pair
+  _voiceTraining.push({transcript:transcript,fields:{color:l._color,moisture:l._moisture,grad:l._grad,struct:l._struct,extra:l._extra,gr:l.gr,sa:l.sa,fi:l.fi,top:l.top,bot:l.bot,uscs:l.uscs}});
+  toast("Voice entry applied — "+l.uscs+" "+l._color);
+  renderBody();
+}
+
+function resetVoiceBtn(layerIdx){
+  var btn=document.getElementById("voiceBtn_"+layerIdx);
+  if(btn){btn.textContent="🎙 Speak";btn.style.background="#7c3aed";}
+}
+
 // Returns array of {top, bot} objects representing recovered depth intervals
 function getRecoveredZones(b){
   var zones=[];
@@ -385,6 +490,17 @@ function doShare(){
 
   // Fallback: just download
   doSave();
+}
+
+function exportTraining(){
+  if(!_voiceTraining.length){toast("No voice training data");return;}
+  var d=JSON.stringify(_voiceTraining,null,2);
+  var blob=new Blob([d],{type:"application/json"});
+  var u=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=u;a.download="voice_training_"+new Date().toISOString().slice(0,10)+".json";a.click();
+  URL.revokeObjectURL(u);
+  toast("Exported "+_voiceTraining.length+" training pairs");
 }
 
 function doAddBoring(){
@@ -652,7 +768,13 @@ function renderBody(){
         h+='<div class="row">'+field("Color",sel("lithology."+i+"._color",l._color||"",COLORS.map(function(c){return[c,c||"-- select --"];})),true)+field("Moisture",sel("lithology."+i+"._moisture",l._moisture||"",MOISTURES.map(function(c){return[c,c||"-- select --"];})),true)+'</div>';
         h+='<div class="row">'+field("Gradation",sel("lithology."+i+"._grad",l._grad||"",GRADS.map(function(c){return[c,c||"-- select --"];})),true)+field("Structure",sel("lithology."+i+"._struct",l._struct||"massive",STRUCTS.map(function(c){return[c,c];})),true)+'</div>';
         h+=field("Extras",sel("lithology."+i+"._extra",l._extra||"",EXTRAS.map(function(c){return[c,c||"-- none --"];})));
-        h+='<button class="btn btn-teal" onclick="autoDesc('+i+')">Auto-Generate Description</button>';
+        h+='<div class="row" style="gap:6px">';
+        h+='<button id="voiceBtn_'+i+'" class="btn" style="background:#7c3aed;flex:1;margin:0" onclick="startVoice('+i+')">🎙 Speak</button>';
+        h+='<button class="btn btn-teal" style="flex:1;margin:0" onclick="autoDesc('+i+')">Auto-Generate Description</button>';
+        h+='</div>';
+        if(l._voiceTranscript){
+          h+='<div style="margin-top:6px;font-size:11px;color:#a78bfa;background:#1e1b4b;padding:6px 8px;border-radius:6px">🎙 "'+esc(l._voiceTranscript)+'"</div>';
+        }
         h+='<div style="margin-top:8px">'+field("Description",'<textarea class="ta" rows="3" onchange="handleChange(\'lithology.'+i+'.description\',this.value)">'+esc(l.description)+'</textarea>')+'</div>';
         h+='</div>';
       }
@@ -972,6 +1094,10 @@ function renderBody(){
     h+='<div>Photos: '+(b.photos||[]).length+'</div></div>';
     if(b.remarks) h+='<div style="margin-top:8px;font-size:12px;color:#fbbf24;font-style:italic">'+esc(b.remarks)+'</div>';
     h+='<button class="btn btn-blue" style="margin-top:16px" onclick="doSave()">Save JSON</button>';
+    if(_voiceTraining.length>0){
+      h+='<div style="margin-top:12px;font-size:11px;color:#a78bfa">🎙 '+_voiceTraining.length+' voice entries recorded for training data</div>';
+      h+='<button class="btn" style="background:#7c3aed;margin-top:4px;font-size:12px;padding:10px" onclick="exportTraining()">Export Voice Training Data</button>';
+    }
     h+='</div>';
   }
 
