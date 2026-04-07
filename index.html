@@ -371,6 +371,29 @@ window.startVoice=function(layerIdx){
 // ===== OFFLINE PARSER =====
 function parseOffline(t){
   var low=t.toLowerCase();
+  // Normalize common speech-to-text errors
+  low=low.replace(/\bfinds\b/g,"fines").replace(/\bfind\b/g,"fines");
+  low=low.replace(/\bmodeled\b/g,"mottled").replace(/\bmodelled\b/g,"mottled");
+  low=low.replace(/\bcourse\b/g,"coarse");
+  low=low.replace(/\bgrate\b/g,"great").replace(/\bgraded\b/g,"graded");
+  low=low.replace(/\bgrey\b/g,"gray");
+  low=low.replace(/\bdamp\b/g,"moist");
+  low=low.replace(/\btend to\b/g,"tan to");
+  low=low.replace(/\bpercent\b/g,"%");
+  low=low.replace(/\bsite\b/g,"silt");
+  low=low.replace(/\bsilts\b/g,"silt");
+  low=low.replace(/\bsands\b/g,"sand");
+  low=low.replace(/\bgravels\b/g,"gravel");
+  low=low.replace(/\bclays\b/g,"clay");
+  low=low.replace(/very fine sand/g,"sand"); // normalize for pct matching
+  low=low.replace(/fine to medium sand/g,"sand");
+  low=low.replace(/fine to coarse sand/g,"sand");
+  low=low.replace(/medium to coarse sand/g,"sand");
+  low=low.replace(/fine sand/g,"sand");
+  low=low.replace(/medium sand/g,"sand");
+  low=low.replace(/coarse sand/g,"sand");
+  low=low.replace(/fine gravel/g,"gravel");
+  low=low.replace(/coarse gravel/g,"gravel");
   var r={uscs_override:"",color:"",moisture:"",gradation:"",structure:"massive",density:"",extra:"",pct_gravel:null,pct_sand:null,pct_fines:null,top_ft:null,bot_ft:null,notes:"",_confidence:0,_matched:[]};
 
   // Special types
@@ -378,9 +401,10 @@ function parseOffline(t){
   else if(/\bfill\b|base course|crushed rock|road base/.test(low)){r.uscs_override="FILL";r._confidence+=3;r._matched.push("FILL");}
   else if(/topsoil|top soil|\bsod\b/.test(low)){r.uscs_override="TOP";r._confidence+=3;r._matched.push("TOP");}
 
-  // Colors
-  var colors=[["mottled brown and gray",/mottled/],["greenish brown",/greenish brown/],["yellowish brown",/yellowish brown/],["grayish brown",/grayish brown/],["brownish gray",/brownish gray/],["greenish gray",/greenish gray/],["reddish brown",/reddish brown/],["dark brown",/dark brown/],["light brown",/light brown/],["dark gray",/dark gray|dark grey/],["light gray",/light gray|light grey/],["brown",/\bbrown\b/],["gray",/\bgray\b|\bgrey\b/],["beige",/\bbeige\b/],["black",/\bblack\b/],["tan",/\btan\b/],["olive",/\bolive\b/],["orange",/\borange\b/],["white",/\bwhite\b/]];
-  for(var ci=0;ci<colors.length;ci++){if(colors[ci][1].test(low)){r.color=colors[ci][0];r._confidence++;r._matched.push("color");break;}}
+  // Colors — use ORIGINAL transcript (before sand normalization) for gradation, but normalized for color
+  var origLow=t.toLowerCase().replace(/\bfinds\b/g,"fines").replace(/\bmodeled\b/g,"mottled").replace(/\bgrey\b/g,"gray").replace(/\btend to\b/g,"tan to").replace(/\bcourse\b/g,"coarse").replace(/\bdamp\b/g,"moist");
+  var colors=[["mottled brown and gray",/mottled/],["greenish brown",/greenish brown/],["yellowish brown",/yellowish brown/],["grayish brown",/grayish brown/],["brownish gray",/brownish gray/],["greenish gray",/greenish gray/],["reddish brown",/reddish brown/],["dark brown",/dark brown/],["light brown",/light brown/],["dark gray",/dark gray/],["light gray",/light gray/],["brown",/\bbrown\b/],["gray",/\bgray\b/],["beige",/\bbeige\b/],["black",/\bblack\b/],["tan",/\btan\b/],["olive",/\bolive\b/],["orange",/\borange\b/],["white",/\bwhite\b/]];
+  for(var ci=0;ci<colors.length;ci++){if(colors[ci][1].test(origLow)){r.color=colors[ci][0];r._confidence++;r._matched.push("color");break;}}
 
   // Moisture
   if(/\bsaturated\b/.test(low)){r.moisture="wet";r._confidence++;r._matched.push("moisture");}
@@ -389,14 +413,14 @@ function parseOffline(t){
   else if(/\bdamp\b|\bmoist\b/.test(low)){r.moisture="moist";r._confidence++;r._matched.push("moisture");}
   else if(/\bdry\b/.test(low)){r.moisture="dry";r._confidence++;r._matched.push("moisture");}
 
-  // Gradation
-  if(/very fine to medium/.test(low)){r.gradation="very fine to medium";r._confidence++;r._matched.push("grad");}
-  else if(/fine to coarse/.test(low)){r.gradation="fine to coarse";r._confidence++;r._matched.push("grad");}
-  else if(/fine to medium/.test(low)){r.gradation="fine to medium";r._confidence++;r._matched.push("grad");}
-  else if(/medium to coarse/.test(low)){r.gradation="medium to coarse";r._confidence++;r._matched.push("grad");}
-  else if(/\bcoarse\b/.test(low)){r.gradation="coarse";r._confidence++;r._matched.push("grad");}
-  else if(/\bmedium\b/.test(low)&&!/medium dense/.test(low)){r.gradation="medium";r._confidence++;r._matched.push("grad");}
-  else if(/\bfine\b/.test(low)&&!/fines/.test(low)){r.gradation="fine";r._confidence++;r._matched.push("grad");}
+  // Gradation — use origLow to preserve "fine to medium" etc.
+  if(/very fine to medium/.test(origLow)){r.gradation="very fine to medium";r._confidence++;r._matched.push("grad");}
+  else if(/fine to coarse/.test(origLow)){r.gradation="fine to coarse";r._confidence++;r._matched.push("grad");}
+  else if(/fine to medium/.test(origLow)){r.gradation="fine to medium";r._confidence++;r._matched.push("grad");}
+  else if(/medium to coarse/.test(origLow)){r.gradation="medium to coarse";r._confidence++;r._matched.push("grad");}
+  else if(/\bcoarse\b/.test(origLow)){r.gradation="coarse";r._confidence++;r._matched.push("grad");}
+  else if(/\bmedium\b/.test(origLow)&&!/medium dense/.test(origLow)){r.gradation="medium";r._confidence++;r._matched.push("grad");}
+  else if(/\bfine\b/.test(origLow)&&!/fines/.test(origLow)){r.gradation="fine";r._confidence++;r._matched.push("grad");}
 
   // Structure
   if(/\bstratified\b/.test(low)){r.structure="stratified";r._confidence++;r._matched.push("struct");}
@@ -461,26 +485,55 @@ function parseOffline(t){
     }
   }
 
-  // Depths — "from X to Y" or "X to Y feet"
+  // Depths — multiple patterns for natural speech
+  // "at X feet" for bottom depth
+  var dm3=low.match(/(?:bottom|bot)\s*(?:of\s*(?:the\s*)?(?:core|run|boring))?\s*(?:at|is)?\s*(\d+(?:\.\d+)?)\s*(?:feet|ft|foot)?/);
+  // "from X to Y" or "X to Y feet"  
   var dm=low.match(/(?:from\s+)?(\d+(?:\.\d+)?)\s*(?:to|through)\s*(\d+(?:\.\d+)?)\s*(?:feet|ft|foot)?/);
-  if(dm){r.top_ft=+dm[1];r.bot_ft=+dm[2];r._confidence++;r._matched.push("depth");}
-  // Also "surface to X"
+  // "extends from X to Y"
+  var dm4=low.match(/extends?\s+from\s+(\d+(?:\.\d+)?)\s*(?:to|through)\s*(\d+(?:\.\d+)?)/);
+  // "surface to X"
   var dm2=low.match(/surface\s+to\s+(\d+(?:\.\d+)?)/);
-  if(dm2&&r.top_ft==null){r.top_ft=0;r.bot_ft=+dm2[1];r._confidence++;r._matched.push("depth");}
+  
+  if(dm4){r.top_ft=+dm4[1];r.bot_ft=+dm4[2];r._confidence++;r._matched.push("depth");}
+  else if(dm){r.top_ft=+dm[1];r.bot_ft=+dm[2];r._confidence++;r._matched.push("depth");}
+  else if(dm2){r.top_ft=0;r.bot_ft=+dm2[1];r._confidence++;r._matched.push("depth");}
+  // Override bot with explicit "bottom at X" if found
+  if(dm3&&r.top_ft!=null){r.bot_ft=+dm3[1];}
 
-  // Notes — odor, sheen, staining
+  // Notes — odor, sheen, staining, moisture transitions, plasticity, softening
   var noteItems=[];
-  if(/\bodor\b|\bsmell\b|petroleum/.test(low)) noteItems.push("Odor noted");
-  if(/\bsheen\b/.test(low)) noteItems.push("Sheen observed");
-  if(/\bstaining\b|\bstain\b/.test(low)){
-    var stm=low.match(/(?:red|brown|dark|black)?\s*staining?\s*(?:at\s+(\d+(?:\.\d+)?)\s*(?:to\s*(\d+(?:\.\d+)?))?\s*(?:feet|ft)?)?/i);
+  if(/\bodor\b|\bsmell\b|petroleum/.test(origLow)) noteItems.push("Odor noted");
+  if(/\bsheen\b/.test(origLow)) noteItems.push("Sheen observed");
+  if(/\bplastic\b|\bplasticity\b/.test(origLow)){
+    var plasticMatch=origLow.match(/(lightly|slightly|moderately|highly|very)?\s*plastic/);
+    noteItems.push(plasticMatch&&plasticMatch[1]?plasticMatch[1]+" plastic":"Plastic");
+  }
+  if(/\bstaining\b|\bstain\b/.test(origLow)){
+    var stm=origLow.match(/(?:red|brown|dark|black)?\s*staining?\s*(?:at\s+(\d+(?:\.\d+)?)\s*(?:to\s*(\d+(?:\.\d+)?))?\s*(?:feet|ft)?)?/i);
     noteItems.push(stm?"Staining"+(stm[1]?" at "+stm[1]+(stm[2]?"-"+stm[2]:"")+" ft":""):"Staining noted");
   }
-  if(/becomes?\s+(?:wet|damp|moist)\s+(?:at\s+)?(\d+(?:\.\d+)?)/i.test(low)){
-    var mm=low.match(/becomes?\s+(?:wet|damp|moist)\s+(?:at\s+)?(\d+(?:\.\d+)?)/i);
-    noteItems.push("Becomes wet at "+mm[1]+" ft");
+  if(/becomes?\s+(?:softer|harder|stiffer|looser|denser)/i.test(origLow)){
+    var softM=origLow.match(/becomes?\s+(softer|harder|stiffer|looser|denser)\s*(?:(?:down|at|around|below)\s*(?:lower|(\d+(?:\.\d+)?)\s*(?:feet|ft)?))?/i);
+    if(softM) noteItems.push("Becomes "+softM[1]+(softM[2]?" at "+softM[2]+" ft":" with depth"));
+  }
+  if(/becomes?\s+(?:more\s+)?(?:wet|moist|damp|saturated)\s*(?:(?:at|around|below)\s*(\d+(?:\.\d+)?)\s*(?:feet|ft)?)?/i.test(origLow)){
+    var mm=origLow.match(/becomes?\s+(?:more\s+)?(?:wet|moist|damp|saturated)\s*(?:(?:at|around|below)\s*(\d+(?:\.\d+)?)\s*(?:feet|ft)?)?/i);
+    noteItems.push("Becomes wetter"+(mm&&mm[1]?" at "+mm[1]+" ft":" with depth"));
   }
   if(noteItems.length)r.notes=noteItems.join(". ");
+
+  // Soil type estimation from keywords — if no explicit pcts, estimate from description
+  if(r.pct_gravel==null&&r.pct_sand==null&&r.pct_fines==null&&!r.uscs_override){
+    if(/clay\s*silt|silty\s*clay/i.test(origLow)){r.pct_gravel=0;r.pct_sand=10;r.pct_fines=90;r._confidence++;r._matched.push("soil-hint");}
+    else if(/\bclay\b/i.test(origLow)&&!/with clay/.test(origLow)){r.pct_gravel=0;r.pct_sand=10;r.pct_fines=90;r._confidence++;r._matched.push("soil-hint");}
+    else if(/sandy\s*silt/i.test(origLow)){r.pct_gravel=0;r.pct_sand=35;r.pct_fines=65;r._confidence++;r._matched.push("soil-hint");}
+    else if(/\bsilt\b/i.test(origLow)&&!/silty/.test(origLow)){r.pct_gravel=0;r.pct_sand=20;r.pct_fines=80;r._confidence++;r._matched.push("soil-hint");}
+    else if(/silty\s*sand/i.test(origLow)){r.pct_gravel=0;r.pct_sand=70;r.pct_fines=30;r._confidence++;r._matched.push("soil-hint");}
+    else if(/sandy\s*gravel/i.test(origLow)){r.pct_gravel=50;r.pct_sand=40;r.pct_fines=10;r._confidence++;r._matched.push("soil-hint");}
+    else if(/\bgravel\b/i.test(origLow)&&!/with gravel/.test(origLow)){r.pct_gravel=55;r.pct_sand=40;r.pct_fines=5;r._confidence++;r._matched.push("soil-hint");}
+    else if(/\bsand\b/i.test(origLow)){r.pct_gravel=0;r.pct_sand=85;r.pct_fines=15;r._confidence++;r._matched.push("soil-hint");}
+  }
 
   return r;
 }
