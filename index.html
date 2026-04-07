@@ -81,8 +81,25 @@ input[list]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3
 <script>
 // ===== SERVICE WORKER =====
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(function() {
+  navigator.serviceWorker.register('sw.js').then(function(reg) {
     console.log('Service worker registered — offline ready');
+    // Check for updates immediately
+    reg.update();
+    // Check for updates every 5 minutes when online
+    setInterval(function(){
+      if(navigator.onLine) reg.update();
+    }, 5*60*1000);
+    // When a new SW is found and activated, reload to get fresh content
+    reg.addEventListener('updatefound', function(){
+      var newSW = reg.installing;
+      if(newSW){
+        newSW.addEventListener('statechange', function(){
+          if(newSW.state === 'activated'){
+            console.log('New version loaded');
+          }
+        });
+      }
+    });
   }).catch(function(err) {
     console.log('SW registration failed:', err);
   });

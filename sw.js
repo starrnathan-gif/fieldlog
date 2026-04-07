@@ -1,11 +1,11 @@
-const CACHE_NAME = 'fieldlog-v10';
+const CACHE_NAME = 'fieldlog-v11';
 const URLS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json'
 ];
 
-// Install: cache everything
+// Install: cache everything, activate immediately
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
@@ -15,7 +15,7 @@ self.addEventListener('install', function(event) {
   self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate: clean old caches, take control immediately
 self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys().then(function(names) {
@@ -28,11 +28,21 @@ self.addEventListener('activate', function(event) {
   self.clients.claim();
 });
 
-// Fetch: serve from cache first, fall back to network
+// Fetch: NETWORK FIRST, cache fallback
+// When online: always get fresh version, update cache
+// When offline: serve from cache
 self.addEventListener('fetch', function(event) {
   event.respondWith(
-    caches.match(event.request).then(function(response) {
-      return response || fetch(event.request);
+    fetch(event.request).then(function(response) {
+      if(response.ok) {
+        var clone = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(event.request, clone);
+        });
+      }
+      return response;
+    }).catch(function() {
+      return caches.match(event.request);
     })
   );
 });
