@@ -380,11 +380,13 @@ function parseOffline(t){
   low=low.replace(/\bdamp\b/g,"moist");
   low=low.replace(/\btend to\b/g,"tan to");
   low=low.replace(/\bpercent\b/g,"%");
-  low=low.replace(/\bsite\b/g,"silt");
+  low=low.replace(/\bsite\b/g,"silt").replace(/\bsilk\b/g,"silt");
   low=low.replace(/\bsilts\b/g,"silt");
   low=low.replace(/\bsands\b/g,"sand");
   low=low.replace(/\bgravels\b/g,"gravel");
   low=low.replace(/\bclays\b/g,"clay");
+  low=low.replace(/\bcork\b/g,"core").replace(/\bcourt\b/g,"core");
+  low=low.replace(/\bverify\b/g,"very fine");
   low=low.replace(/very fine sand/g,"sand"); // normalize for pct matching
   low=low.replace(/fine to medium sand/g,"sand");
   low=low.replace(/fine to coarse sand/g,"sand");
@@ -402,7 +404,7 @@ function parseOffline(t){
   else if(/topsoil|top soil|\bsod\b/.test(low)){r.uscs_override="TOP";r._confidence+=3;r._matched.push("TOP");}
 
   // Colors — use ORIGINAL transcript (before sand normalization) for gradation, but normalized for color
-  var origLow=t.toLowerCase().replace(/\bfinds\b/g,"fines").replace(/\bmodeled\b/g,"mottled").replace(/\bgrey\b/g,"gray").replace(/\btend to\b/g,"tan to").replace(/\bcourse\b/g,"coarse").replace(/\bdamp\b/g,"moist");
+  var origLow=t.toLowerCase().replace(/\bfinds\b/g,"fines").replace(/\bmodeled\b/g,"mottled").replace(/\bgrey\b/g,"gray").replace(/\btend to\b/g,"tan to").replace(/\bcourse\b/g,"coarse").replace(/\bdamp\b/g,"moist").replace(/\bsilk\b/g,"silt").replace(/\bverify\b/g,"very fine").replace(/\bcork\b/g,"core").replace(/\bcourt\b/g,"core");
   var colors=[["mottled brown and gray",/mottled/],["greenish brown",/greenish brown/],["yellowish brown",/yellowish brown/],["grayish brown",/grayish brown/],["brownish gray",/brownish gray/],["greenish gray",/greenish gray/],["reddish brown",/reddish brown/],["dark brown",/dark brown/],["light brown",/light brown/],["dark gray",/dark gray/],["light gray",/light gray/],["brown",/\bbrown\b/],["gray",/\bgray\b/],["beige",/\bbeige\b/],["black",/\bblack\b/],["tan",/\btan\b/],["olive",/\bolive\b/],["orange",/\borange\b/],["white",/\bwhite\b/]];
   for(var ci=0;ci<colors.length;ci++){if(colors[ci][1].test(origLow)){r.color=colors[ci][0];r._confidence++;r._matched.push("color");break;}}
 
@@ -450,11 +452,14 @@ function parseOffline(t){
   else if(/\borganics?\b/.test(low)){r.extra="with organics";r._confidence++;r._matched.push("extra");}
   else if(/\broots?\b/.test(low)){r.extra="with roots";r._confidence++;r._matched.push("extra");}
 
-  // Percentages — look for patterns like "10 gravel 80 sand 10 fines" or "10 80 10" or "10% gravel"
+  // Percentages — look for patterns like "10 gravel 80 sand 10 fines" or "10% gravel"
+  // Pattern 1: number before soil type (10% gravel 80% sand 10% fines)
+  // Pattern 2: soil type before number (gravel 10% sand 80% fines 10%)
+  // Pattern 3: three numbers close together (10 80 10) — ONLY if tightly grouped
   var pctPatterns=[
     /(\d+)\s*%?\s*(?:percent\s*)?gravel.*?(\d+)\s*%?\s*(?:percent\s*)?sand.*?(\d+)\s*%?\s*(?:percent\s*)?fines/i,
-    /gravel.*?(\d+).*?sand.*?(\d+).*?fines.*?(\d+)/i,
-    /(\d+)\s+(\d+)\s+(\d+)/
+    /gravel\s*(\d+)\s*%?.*?sand\s*(\d+)\s*%?.*?fines\s*(\d+)\s*%?/i,
+    /(\d+)\s*%?\s*gravel.*?(\d+)\s*%?\s*sand.*?(\d+)\s*%?\s*fines/i
   ];
   for(var pi=0;pi<pctPatterns.length;pi++){
     var pm=low.match(pctPatterns[pi]);
@@ -467,11 +472,14 @@ function parseOffline(t){
       }
     }
   }
-  // Also try "X percent gravel" individually
+  // Try individual extraction — number before OR after soil type
   if(r.pct_gravel==null){
-    var gm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?gravel/);
-    var sm2=low.match(/(\d+)\s*%?\s*(?:percent\s*)?sand/);
-    var fm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?fines/);
+    var gm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?gravel/)||low.match(/gravel\s*(?:is\s*)?(\d+)\s*%?/);
+    var sm2=low.match(/(\d+)\s*%?\s*(?:percent\s*)?sand/)||low.match(/sand\s*(?:is\s*)?(\d+)\s*%?/);
+    var fm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?fines/)||low.match(/fines\s*(?:is\s*)?(\d+)\s*%?/);
+    if(gm)r.pct_gravel=+gm[1];
+    if(sm2)r.pct_sand=+sm2[1];
+    if(fm)r.pct_fines=+fm[1];
     if(gm)r.pct_gravel=+gm[1];
     if(sm2)r.pct_sand=+sm2[1];
     if(fm)r.pct_fines=+fm[1];
