@@ -136,7 +136,7 @@ const RECOV_FT=["",0.25,0.5,0.75,1,1.25,1.5,1.75,2,2.25,2.5,2.75,3,3.25,3.5,3.75
 const STYPES=["SO","GW","GP","SH","GT"];
 const TD_OPTS=[5,10,15,20,25,30,35,40,50];
 const BF_OPTS=["Bentonite","Cement/Bentonite","Cuttings","Grout","Other"];
-const TABS=[["borings","Borings"],["header","Header"],["samplers","Core Log"],["pid","PID"],["litho","Soils"],["samples","Samples"],["gw","GW"],["remarks","Notes"],["preview","Preview"],["summary","Summary"]];
+const TABS=[["borings","Borings"],["header","Header"],["samplers","Core Log"],["pid","PID"],["litho","Soils"],["samples","Samples"],["gw","GW"],["photos","Photos"],["remarks","Notes"],["preview","Preview"],["summary","Summary"]];
 
 let borings=[], bi=0, tab="header", expL=null;
 
@@ -144,7 +144,7 @@ let borings=[], bi=0, tab="header", expL=null;
 try{const saved=null;}catch(e){} // placeholder - no localStorage in some contexts
 
 function mkBlank(){
-  return {id:"",location:"",city:"",drill_co:"",date_start:"",method:"Direct Push",equipment:"",total_depth:15,gw_first:"N/A",gw_second:"N/A",field_rep:"",backfill:"Bentonite",screen_interval:"N/A",drillers:"",lat:"",lon:"",elevation:"",samplers:[],pid:[],lithology:[],samples:[],gw_samples:[],remarks:"",general_notes:""};
+  return {id:"",location:"",city:"",drill_co:"",date_start:"",method:"Direct Push",equipment:"",total_depth:15,gw_first:"N/A",gw_second:"N/A",field_rep:"",backfill:"Bentonite",screen_interval:"N/A",drillers:"",lat:"",lon:"",elevation:"",samplers:[],pid:[],lithology:[],samples:[],gw_samples:[],photos:[],remarks:"",general_notes:""};
 }
 
 function classify(gr,sa,fi){
@@ -225,6 +225,60 @@ function fetchElevation(lat,lon){
   })
   .catch(function(){/* offline — use GPS altitude if available */});
 }
+
+// ===== PHOTO CAPTURE =====
+window.takePhoto=function(coreIdx){
+  var inp=document.createElement("input");
+  inp.type="file";
+  inp.accept="image/*";
+  inp.capture="environment"; // rear camera
+  inp.onchange=function(e){
+    var f=e.target.files[0];
+    if(!f) return;
+    // Resize to max 1200px wide to keep JSON manageable
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var img=new Image();
+      img.onload=function(){
+        var maxW=1200;
+        var w=img.width,h=img.height;
+        if(w>maxW){h=h*(maxW/w);w=maxW;}
+        var canvas=document.createElement("canvas");
+        canvas.width=w;canvas.height=h;
+        var ctx=canvas.getContext("2d");
+        ctx.drawImage(img,0,0,w,h);
+        var data=canvas.toDataURL("image/jpeg",0.7);
+        if(!borings[bi].photos) borings[bi].photos=[];
+        borings[bi].photos.push({
+          data:data,
+          core_run:coreIdx!=null?coreIdx:-1,
+          depth_top:coreIdx!=null?(borings[bi].samplers[coreIdx]||{}).top||"":"",
+          depth_bot:coreIdx!=null?(borings[bi].samplers[coreIdx]||{}).bot||"":"",
+          note:"",
+          time:new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"})
+        });
+        toast("Photo added");
+        renderBody();
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  };
+  inp.click();
+};
+
+window.deletePhoto=function(idx){
+  if(confirm("Delete this photo?")){
+    borings[bi].photos.splice(idx,1);
+    renderBody();
+  }
+};
+
+window.updatePhotoNote=function(idx,val){
+  if(borings[bi].photos&&borings[bi].photos[idx]){
+    borings[bi].photos[idx].note=val;
+  }
+};
 
 // Returns array of {top, bot} objects representing recovered depth intervals
 function getRecoveredZones(b){
@@ -464,6 +518,7 @@ function renderBody(){
       counts.push((br.lithology||[]).length+" layers");
       counts.push((br.pid||[]).length+" PID");
       counts.push((br.samples||[]).length+" samples");
+      counts.push((br.photos||[]).length+" photos");
       h+='<div style="font-size:10px;color:#64748b;margin-top:2px">'+esc(counts.join(" · "))+'</div>';
       h+='</div>';
       h+='<div style="display:flex;gap:6px;align-items:center">';
@@ -522,6 +577,23 @@ function renderBody(){
         h+='</div>';
       } else if(s.recovery==="NR"){
         h+='<div style="background:#7f1d1d;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#fca5a5;font-weight:600">No recovery '+(s.top||0)+'–'+(s.bot||0)+' ft</div>';
+      }
+      // Photo button + thumbnails
+      var runPhotos=(b.photos||[]).filter(function(p){return p.core_run===i;});
+      h+='<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">';
+      h+='<button class="btn btn-blue" style="width:auto;padding:8px 14px;margin:0;font-size:12px" onclick="takePhoto('+i+')">📷 Photo</button>';
+      if(runPhotos.length) h+='<span style="font-size:11px;color:#94a3b8">'+runPhotos.length+' photo(s)</span>';
+      h+='</div>';
+      if(runPhotos.length){
+        h+='<div style="display:flex;gap:6px;margin-top:6px;overflow-x:auto">';
+        runPhotos.forEach(function(p){
+          var pIdx=(b.photos||[]).indexOf(p);
+          h+='<div style="flex-shrink:0;position:relative">';
+          h+='<img src="'+p.data+'" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #475569" />';
+          h+='<button onclick="deletePhoto('+pIdx+')" style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;line-height:18px;text-align:center;cursor:pointer">X</button>';
+          h+='</div>';
+        });
+        h+='</div>';
       }
       h+='</div>';
     });
@@ -648,6 +720,33 @@ function renderBody(){
       h+='</div>';
     });
     h+='<button class="btn btn-blue" onclick="addArr(\'gw_samples\',{screen:\'\',time:\'\',remarks:\'\'})">+ Add GW Sample</button></div>';
+  }
+
+  else if(tab==="photos"){
+    var photos=b.photos||[];
+    h+='<div class="card"><div class="ctitle">Photos ('+photos.length+')</div>';
+    h+='<button class="btn btn-blue" style="margin-bottom:12px" onclick="takePhoto(null)">📷 Take Photo (General)</button>';
+    if(!photos.length){
+      h+='<div style="text-align:center;padding:30px 10px;color:#64748b;font-size:13px">No photos yet. Take photos from the Core Log tab or use the button above.</div>';
+    }
+    photos.forEach(function(p,i){
+      var label="General";
+      if(p.core_run!=null&&p.core_run>=0) label="Core Run #"+(p.core_run+1)+" ("+p.depth_top+"–"+p.depth_bot+" ft)";
+      h+='<div class="item">';
+      h+='<div style="display:flex;gap:10px">';
+      h+='<img src="'+p.data+'" style="width:100px;height:100px;object-fit:cover;border-radius:8px;border:1px solid #475569;flex-shrink:0" />';
+      h+='<div style="flex:1;min-width:0">';
+      h+='<div style="font-size:12px;font-weight:700;color:#93c5fd">'+esc(label)+'</div>';
+      h+='<div style="font-size:11px;color:#64748b;margin-top:2px">'+esc(p.time||"")+'</div>';
+      h+='<textarea class="ta" rows="2" style="margin-top:6px;font-size:12px;min-height:40px" placeholder="Add note..." onchange="updatePhotoNote('+i+',this.value)">'+esc(p.note||"")+'</textarea>';
+      h+='</div>';
+      h+='<button class="dbtn" style="align-self:flex-start;font-size:14px;padding:6px 8px" onclick="deletePhoto('+i+')">X</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+    if(photos.length>3){
+      h+='<div class="card" style="margin-top:8px"><div style="font-size:11px;color:#f59e0b;text-align:center">⚠ '+photos.length+' photos — large exports may be slow. Consider saving frequently.</div></div>';
+    }
   }
 
   else if(tab==="remarks"){
@@ -869,7 +968,8 @@ function renderBody(){
     h+='<div>Core runs: '+(b.samplers||[]).length+'</div>';
     h+='<div>PID: '+(b.pid||[]).length+' readings</div>';
     h+='<div>Soil samples: '+(b.samples||[]).length+'</div>';
-    h+='<div>GW samples: '+(b.gw_samples||[]).length+'</div></div>';
+    h+='<div>GW samples: '+(b.gw_samples||[]).length+'</div>';
+    h+='<div>Photos: '+(b.photos||[]).length+'</div></div>';
     if(b.remarks) h+='<div style="margin-top:8px;font-size:12px;color:#fbbf24;font-style:italic">'+esc(b.remarks)+'</div>';
     h+='<button class="btn btn-blue" style="margin-top:16px" onclick="doSave()">Save JSON</button>';
     h+='</div>';
