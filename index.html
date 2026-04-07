@@ -235,6 +235,16 @@ function isInRecoveredZone(b,sampTop,sampBot){
   return false;
 }
 
+// Check if a single depth point falls within recovered zones
+function isDepthRecovered(b,d){
+  var zones=getRecoveredZones(b);
+  if(zones.length===0) return true;
+  for(var i=0;i<zones.length;i++){
+    if(d>=zones[i].top&&d<=zones[i].bot) return true;
+  }
+  return false;
+}
+
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 // ===== INIT =====
@@ -503,12 +513,25 @@ function renderBody(){
   }
 
   else if(tab==="pid"){
+    var zones=getRecoveredZones(b);
+    var hasZones=zones.length>0;
     h+='<div class="card"><div class="ctitle">PID Readings ('+(b.pid||[]).length+')</div>';
+    if(hasZones){
+      h+='<div style="font-size:11px;color:#86efac;margin-bottom:8px">Recovered zones: ';
+      h+=zones.map(function(z){return z.top+'–'+z.bot+' ft';}).join(', ');
+      h+='</div>';
+    }
     (b.pid||[]).forEach(function(p,i){
+      var d=parseFloat(p.depth);
+      var valid=true;
+      if(hasZones&&!isNaN(d)) valid=isDepthRecovered(b,d);
       h+='<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px">';
       h+=field(i===0?"Depth (ft)":"\u00A0",sel("pid."+i+".depth",p.depth,DEPTHS.map(function(d){return[d,d];})),true);
       h+=field(i===0?"Reading (ppm)":"\u00A0",numInp("pid."+i+".reading",p.reading,"0.18"),true);
       h+='<button class="dbtn" style="margin-bottom:2px" onclick="delArr(\'pid\','+i+')">X</button></div>';
+      if(!valid){
+        h+='<div style="background:#7f1d1d;border-radius:8px;padding:6px 10px;margin:-2px 0 6px;font-size:11px;color:#fca5a5;font-weight:600">PID at '+d+' ft is in a non-recovered zone. Check Core Log tab.</div>';
+      }
     });
     var lastP=b.pid[b.pid.length-1];var nd=lastP?+lastP.depth+2:1;
     h+='<button class="btn btn-blue" onclick="addArr(\'pid\',{depth:'+nd+',reading:\'\'})">+ Add PID Reading</button></div>';
