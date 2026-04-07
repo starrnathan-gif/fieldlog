@@ -298,29 +298,70 @@ window.startVoice=function(layerIdx){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast("Speech recognition not available on this browser");return;}
 
+  // If already listening, stop
+  if(window._activeRecognition){
+    window._activeRecognition.stop();
+    return;
+  }
+
   var recognition=new SR();
-  recognition.continuous=false;
-  recognition.interimResults=false;
+  recognition.continuous=true;
+  recognition.interimResults=true;
   recognition.lang="en-US";
+  window._activeRecognition=recognition;
+  var fullTranscript="";
 
   var btn=document.getElementById("voiceBtn_"+layerIdx);
-  if(btn){btn.textContent="🎙 Listening...";btn.style.background="#dc2626";}
+  if(btn){btn.textContent="🎙 Listening... (say STOP)";btn.style.background="#dc2626";}
 
   recognition.onresult=function(event){
-    var transcript=event.results[0][0].transcript;
-    if(btn){btn.textContent="🎙 Processing...";btn.style.background="#d97706";}
-    toast("Heard: "+transcript.substring(0,40)+"...");
-    parseVoiceWithClaude(transcript,layerIdx);
+    var interim="";
+    fullTranscript="";
+    for(var i=0;i<event.results.length;i++){
+      var t=event.results[i][0].transcript;
+      if(event.results[i].isFinal){
+        fullTranscript+=t+" ";
+      } else {
+        interim+=t;
+      }
+    }
+    var combined=(fullTranscript+interim).trim();
+    // Show what's being heard
+    if(btn){
+      var preview=combined.length>30?combined.substring(combined.length-30)+"...":combined;
+      btn.textContent="🎙 "+preview;
+    }
+    // Check for "stop" command
+    var lower=combined.toLowerCase();
+    if(lower.endsWith("stop")||lower.endsWith("stop.")||lower.endsWith("stop recording")){
+      recognition.stop();
+      // Remove the "stop" word from transcript
+      fullTranscript=combined.replace(/\s*(stop recording|stop)\.?\s*$/i,"").trim();
+      if(btn){btn.textContent="🎙 Processing...";btn.style.background="#d97706";}
+      toast("Heard: "+fullTranscript.substring(0,50)+"...");
+      window._activeRecognition=null;
+      parseVoiceWithClaude(fullTranscript,layerIdx);
+    }
   };
 
   recognition.onerror=function(event){
     toast("Voice error: "+event.error);
     if(btn){btn.textContent="🎙 Speak";btn.style.background="#7c3aed";}
+    window._activeRecognition=null;
   };
 
   recognition.onend=function(){
-    if(btn&&btn.textContent==="🎙 Listening..."){
-      btn.textContent="🎙 Speak";btn.style.background="#7c3aed";
+    // If stopped without "stop" command (e.g., tapped button to stop)
+    if(window._activeRecognition===recognition){
+      window._activeRecognition=null;
+      fullTranscript=fullTranscript.trim();
+      if(fullTranscript){
+        if(btn){btn.textContent="🎙 Processing...";btn.style.background="#d97706";}
+        toast("Heard: "+fullTranscript.substring(0,50)+"...");
+        parseVoiceWithClaude(fullTranscript,layerIdx);
+      } else {
+        if(btn){btn.textContent="🎙 Speak";btn.style.background="#7c3aed";}
+      }
     }
   };
 
