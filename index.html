@@ -741,12 +741,14 @@ function renderBody(){
       if(l.top>0){
         h+='<line x1="'+cDesc+'" y1="'+ftY(lt)+'" x2="'+rEdge+'" y2="'+ftY(lt)+'" stroke="#333" stroke-width="0.3" stroke-dasharray="3,2"/>';
       }
-      // Description text
+      // Description text + grain %
       var midY=(ftY(lt)+ftY(lb))/2;
       var desc=l.description||"";
-      // Truncate for phone
       if(desc.length>60) desc=desc.substring(0,57)+"...";
-      h+='<text x="'+(cDesc+3)+'" y="'+(midY+2)+'" font-size="5" fill="#1a1a1a">'+esc(desc)+'</text>';
+      h+='<text x="'+(cDesc+3)+'" y="'+(midY-1)+'" font-size="5" fill="#1a1a1a">'+esc(desc)+'</text>';
+      if(l.uscs!=="AC"&&(l.gr!=null||l.sa!=null||l.fi!=null)){
+        h+='<text x="'+(cDesc+3)+'" y="'+(midY+6)+'" font-size="4.5" fill="#888">G-'+(l.gr||0)+'% S-'+(l.sa||0)+'% F-'+(l.fi||0)+'%</text>';
+      }
     });
 
     // No recovery labels in desc column
