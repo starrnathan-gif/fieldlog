@@ -282,11 +282,19 @@ window.updatePhotoNote=function(idx,val){
 
 // ===== VOICE ENTRY =====
 var _voiceTraining=[]; // stores transcript→fields pairs for future offline parser
-var CLAUDE_API_KEY="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";
+var CLAUDE_API_KEY="";
+
+window.getApiKey=function(){
+  if(CLAUDE_API_KEY) return CLAUDE_API_KEY;
+  var k=prompt("Enter your Anthropic API key (starts with sk-ant-).\nThis is stored in memory only — not saved anywhere.");
+  if(k&&k.startsWith("sk-ant-")){CLAUDE_API_KEY=k;return k;}
+  toast("Invalid API key");return null;
+};
 
 var SOIL_PARSE_PROMPT='You are a geotechnical field data parser. Extract soil description fields from the spoken transcript.\n\nReturn ONLY a JSON object with these fields (use "" if not mentioned):\n{\n"color": one of: brown, dark brown, light brown, grayish brown, gray, dark gray, light gray, beige, reddish brown, black, tan, olive\n"moisture": one of: dry, moist, moist to wet, wet\n"gradation": one of: fine, medium, coarse, fine to medium, fine to coarse, medium to coarse, very fine to medium\n"structure": one of: massive, stratified, laminated, homogeneous, fissured, lensed, blocky\n"extra": one of: with crushed shells, with woody debris, with cobbles, with organics, with roots, or ""\n"pct_gravel": number 0-100\n"pct_sand": number 0-100\n"pct_fines": number 0-100\n"top_ft": number or null if not mentioned\n"bot_ft": number or null if not mentioned\n}\n\nRules:\n- Percentages must sum to 100. If only two are given, calculate the third.\n- If they say "silty sand" without percentages, estimate: gravel 0, sand 70, fines 30\n- If they say "sandy silt", estimate: gravel 0, sand 35, fines 65\n- "with gravel" means 10-25% gravel\n- Listen for depth references like "zero to five" or "five to ten feet"\n- Return ONLY the JSON, no other text.';
 
 window.startVoice=function(layerIdx){
+  if(!getApiKey()){return;}
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast("Speech recognition not available on this browser");return;}
 
