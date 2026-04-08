@@ -661,6 +661,206 @@ function resetVoiceBtn(layerIdx){
   if(btn){btn.textContent="🎙 Speak";btn.style.background="#7c3aed";}
 }
 
+// ===== GUIDED VOICE CORE WORKFLOW =====
+var _voiceStep="idle"; // idle, core, soil, pid, sample
+var _voiceCoreIdx=null; // index of core run being voice-entered
+
+function voiceStatus(msg,color){
+  var el=document.getElementById("voiceStatus");
+  if(el){el.textContent=msg;el.style.background=color||"#1e3a5f";}
+}
+
+window.startVoiceCore=function(){
+  _voiceStep="core";
+  var b=B();
+  var lastS=b.samplers[b.samplers.length-1];
+  var nextTop=lastS?(lastS.top||0)+(lastS.tool_len||5):0;
+  toast("Say: core depth and recovery (e.g. '"+nextTop+" to "+(nextTop+5)+", recovery 4 feet')");
+  voiceListen(function(transcript){
+    parseCoreVoice(transcript,nextTop);
+  });
+};
+
+window.voiceNextStep=function(){
+  if(_voiceStep==="core"){
+    _voiceStep="soil";
+    toast("Say: soil description, then 'stop'");
+    // Auto-create soil layer for this core
+    var b=B();var s=b.samplers[_voiceCoreIdx];
+    if(s){
+      var existing=b.lithology.filter(function(l){return l.top>=s.top&&l.top<s.bot;});
+      if(!existing.length){
+        b.lithology.push({top:s.top,bot:s.bot,description:"",uscs:"SM",gr:0,sa:70,fi:30,_color:"brown",_moisture:"moist",_grad:"fine to coarse",_struct:"massive",_density:"",_extra:""});
+        b.lithology.sort(function(a,b2){return a.top-b2.top;});
+      }
+    }
+    var lithoIdx=-1;
+    for(var i=0;i<b.lithology.length;i++){if(b.lithology[i].top>=s.top&&b.lithology[i].top<s.bot){lithoIdx=i;break;}}
+    tab="litho";expL=lithoIdx>=0?lithoIdx:null;renderAll();
+    voiceListen(function(transcript){
+      if(lithoIdx>=0) processVoiceResult(transcript,lithoIdx);
+      _voiceStep="pid";
+      renderAll();
+    });
+  } else if(_voiceStep==="soil"||_voiceStep==="pid"){
+    _voiceStep="pid";
+    toast("Say PID readings: 'depth reading' pairs, then 'stop'. E.g. '1 foot 0.1, 2 foot 0.3'");
+    tab="pid";renderAll();
+    voiceListen(function(transcript){
+      parsePIDVoice(transcript);
+      _voiceStep="sample";
+      renderAll();
+    });
+  } else if(_voiceStep==="pid"||_voiceStep==="sample"){
+    _voiceStep="sample";
+    toast("Say sample interval, e.g. '2 to 3 feet', or 'no sample'");
+    tab="samples";renderAll();
+    voiceListen(function(transcript){
+      parseSampleVoice(transcript);
+      _voiceStep="idle";
+      _voiceCoreIdx=null;
+      tab="samplers";renderAll();
+      toast("Core complete! Tap 🎙 Start Core for next run.");
+    });
+  }
+};
+
+window.voiceSkipStep=function(){
+  if(_voiceStep==="soil"){_voiceStep="pid";toast("Skipped soil — say PID readings");tab="pid";renderAll();}
+  else if(_voiceStep==="pid"){_voiceStep="sample";toast("Skipped PID — say sample interval");tab="samples";renderAll();}
+  else if(_voiceStep==="sample"){_voiceStep="idle";_voiceCoreIdx=null;toast("Core complete!");tab="samplers";renderAll();}
+};
+
+function voiceListen(callback){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast("Speech recognition not available");return;}
+  if(window._activeRecognition){window._activeRecognition.stop();window._activeRecognition=null;}
+
+  var recognition=new SR();
+  recognition.continuous=true;
+  recognition.interimResults=true;
+  recognition.lang="en-US";
+  window._activeRecognition=recognition;
+  var fullTranscript="";
+
+  var btn=document.getElementById("voiceCoreBtn");
+  if(btn){btn.textContent="🎙 Listening... (say STOP)";btn.style.background="#dc2626";}
+
+  recognition.onresult=function(event){
+    var interim="";fullTranscript="";
+    for(var i=0;i<event.results.length;i++){
+      var t2=event.results[i][0].transcript;
+      if(event.results[i].isFinal) fullTranscript+=t2+" ";
+      else interim+=t2;
+    }
+    var combined=(fullTranscript+interim).trim();
+    if(btn){var preview=combined.length>30?combined.substring(combined.length-30)+"...":combined;btn.textContent="🎙 "+preview;}
+    var lower=combined.toLowerCase();
+    if(lower.endsWith("stop")||lower.endsWith("stop.")||lower.endsWith("stop recording")){
+      recognition.stop();
+      fullTranscript=combined.replace(/\s*(stop recording|stop)\.?\s*$/i,"").trim();
+      window._activeRecognition=null;
+      if(btn){btn.textContent="🎙 Start Core";btn.style.background="#7c3aed";}
+      if(fullTranscript) callback(fullTranscript);
+    }
+  };
+  recognition.onerror=function(){
+    if(btn){btn.textContent="🎙 Start Core";btn.style.background="#7c3aed";}
+    window._activeRecognition=null;
+  };
+  recognition.onend=function(){
+    if(window._activeRecognition===recognition){
+      window._activeRecognition=null;
+      fullTranscript=fullTranscript.trim();
+      if(btn){btn.textContent="🎙 Start Core";btn.style.background="#7c3aed";}
+      if(fullTranscript) callback(fullTranscript);
+    }
+  };
+  recognition.start();
+}
+
+function parseCoreVoice(transcript,defaultTop){
+  var low=transcript.toLowerCase().replace(/\bfeet\b/g,"ft").replace(/\bfoot\b/g,"ft");
+  var top=defaultTop,len=5,recovery="";
+
+  // "X to Y" → top and bot, derive length
+  var dm=low.match(/(\d+(?:\.\d+)?)\s*(?:to|through)\s*(\d+(?:\.\d+)?)/);
+  if(dm){top=+dm[1];var bot=+dm[2];len=bot-top;}
+
+  // "starting at X" or "top at X"
+  var tm=low.match(/(?:starting|top|start)\s*(?:at\s*)?(\d+(?:\.\d+)?)/);
+  if(tm) top=+tm[1];
+
+  // Core length: "5 foot core" or "five foot run"
+  var lm=low.match(/(\d+(?:\.\d+)?)\s*(?:ft)?\s*(?:core|run|push)/);
+  if(lm) len=+lm[1];
+
+  // "next X feet"
+  var nm=low.match(/next\s+(\d+(?:\.\d+)?)\s*ft/);
+  if(nm) len=+nm[1];
+
+  // Recovery
+  if(/\bnr\b|no recovery|nothing back|no return/.test(low)){
+    recovery="NR";
+  } else if(/full recovery|got it all|all back|100/.test(low)){
+    recovery=String(len);
+  } else {
+    var rm=low.match(/(?:recovery|recovered|got back|back)\s*(?:is\s*|of\s*)?(\d+(?:\.\d+)?)/);
+    if(rm) recovery=rm[1];
+    // Also try bare "X feet recovery" or "X.X recovery"
+    if(!recovery){var rm2=low.match(/(\d+(?:\.\d+)?)\s*(?:ft\s*)?(?:recovery|of recovery)/);if(rm2) recovery=rm2[1];}
+  }
+
+  var bot=top+len;
+  var b=B();
+  b.samplers.push({top:top,bot:bot,tool_len:len,recovery:recovery,custom_interval:false,recov_top:null,recov_bot:null});
+  _voiceCoreIdx=b.samplers.length-1;
+  toast("Core #"+b.samplers.length+": "+top+"–"+bot+" ft, recovery: "+(recovery||"not set"));
+  renderBody();
+}
+
+function parsePIDVoice(transcript){
+  var low=transcript.toLowerCase().replace(/\bfeet\b/g,"ft").replace(/\bfoot\b/g,"ft");
+  var b=B();
+  // Match patterns like "1 ft 0.1" or "at 2 feet reading 0.3" or "2 foot point 3"
+  // Also "1 foot background" or "zero at 1 foot"
+  var pidPattern=/(?:(?:at\s+)?(\d+(?:\.\d+)?)\s*(?:ft)?\s*(?:reading\s*|is\s*)?(\d+(?:\.\d+)?|background|zero|non-detect|nd|bdl))/gi;
+  var match;
+  while((match=pidPattern.exec(low))!==null){
+    var depth=+match[1];
+    var reading=match[2];
+    if(/background|zero|non-detect|nd|bdl/i.test(reading)) reading="0";
+    b.pid.push({depth:depth,reading:reading});
+  }
+  // Also try "point X" patterns: "1 ft point 1" → 0.1
+  var pointPattern=/(\d+(?:\.\d+)?)\s*ft\s*point\s*(\d+)/gi;
+  while((match=pointPattern.exec(low))!==null){
+    var depth2=+match[1];
+    var reading2="0."+match[2];
+    // Check if we already added this depth
+    var exists=b.pid.some(function(p){return +p.depth===depth2;});
+    if(!exists) b.pid.push({depth:depth2,reading:reading2});
+  }
+  if(b.pid.length) toast("Added "+b.pid.length+" PID reading(s)");
+  else toast("No PID readings detected — add manually if needed");
+  renderBody();
+}
+
+function parseSampleVoice(transcript){
+  var low=transcript.toLowerCase().replace(/\bfeet\b/g,"ft").replace(/\bfoot\b/g,"ft");
+  if(/no sample|skip|none/.test(low)){toast("No sample");return;}
+  var b=B();
+  // "2 to 3" or "from 2 to 3 feet" or "2-3"
+  var sm=low.match(/(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)/);
+  if(sm){
+    b.samples.push({interval:sm[1]+"-"+sm[2],time:"",dup:false,remarks:""});
+    toast("Sample: "+sm[1]+"–"+sm[2]+" ft");
+  } else {
+    toast("Couldn't parse sample interval — add manually");
+  }
+  renderBody();
+}
+
 // Returns array of {top, bot} objects representing recovered depth intervals
 function getRecoveredZones(b){
   var zones=[];
@@ -889,6 +1089,27 @@ function renderTabs(){
   }).join("");
 }
 
+function voiceWorkflowBar(){
+  if(_voiceStep==="idle") return "";
+  var steps=["core","soil","pid","sample"];
+  var labels=["Core","Soils","PID","Sample"];
+  var h2='<div class="card" style="padding:10px;margin-bottom:8px;background:#1e3a5f;border:2px solid #3b82f6">';
+  h2+='<div style="display:flex;gap:4px;margin-bottom:8px">';
+  steps.forEach(function(st,si){
+    var active=_voiceStep===st;
+    var done=steps.indexOf(_voiceStep)>si;
+    var col=active?"#3b82f6":done?"#22c55e":"#334155";
+    h2+='<div style="flex:1;text-align:center;padding:4px;border-radius:4px;background:'+col+';color:#fff;font-size:11px;font-weight:700">'+labels[si]+'</div>';
+  });
+  h2+='</div>';
+  h2+='<div style="display:flex;gap:6px">';
+  h2+='<button class="btn" style="flex:1;margin:0;background:#3b82f6;font-size:12px;padding:8px" onclick="voiceNextStep()">▶ Next Step</button>';
+  h2+='<button class="btn" style="flex:1;margin:0;background:#64748b;font-size:12px;padding:8px" onclick="voiceSkipStep()">⏭ Skip</button>';
+  h2+='<button class="btn" style="flex:1;margin:0;background:#dc2626;font-size:12px;padding:8px" onclick="_voiceStep=\'idle\';_voiceCoreIdx=null;renderAll();">✕ Cancel</button>';
+  h2+='</div></div>';
+  return h2;
+}
+
 function renderBody(){
   _dlid=0; // reset datalist IDs
   var b=B();
@@ -945,7 +1166,9 @@ function renderBody(){
   }
 
   else if(tab==="samplers"){
+    h+=voiceWorkflowBar();
     h+='<div class="card"><div class="ctitle">Core Runs ('+(b.samplers||[]).length+')</div>';
+    h+='<button id="voiceCoreBtn" class="btn" style="background:#7c3aed;margin-bottom:12px;font-size:14px;padding:12px" onclick="startVoiceCore()">🎙 Start Core (Voice)</button>';
     (b.samplers||[]).forEach(function(s,i){
       var recFt=parseFloat(s.recovery);
       var runFt=(s.bot||0)-(s.top||0);
@@ -997,6 +1220,7 @@ function renderBody(){
   else if(tab==="pid"){
     var zones=getRecoveredZones(b);
     var hasZones=zones.length>0;
+    h+=voiceWorkflowBar();
     h+='<div class="card"><div class="ctitle">PID Readings ('+(b.pid||[]).length+')</div>';
     if(hasZones){
       h+='<div style="font-size:11px;color:#86efac;margin-bottom:8px">Recovered zones: ';
@@ -1020,6 +1244,7 @@ function renderBody(){
   }
 
   else if(tab==="litho"){
+    h+=voiceWorkflowBar();
     h+='<div class="card"><div class="ctitle">Soil Layers ('+(b.lithology||[]).length+')</div>';
     (b.lithology||[]).forEach(function(l,i){
       var cl=classify(l.gr,l.sa,l.fi);
@@ -1074,6 +1299,7 @@ function renderBody(){
       }
     });
 
+    h+=voiceWorkflowBar();
     h+='<div class="card"><div class="ctitle">Soil Samples ('+(b.samples||[]).length+')</div>';
     if(hasZones){
       h+='<div style="font-size:11px;color:#86efac;margin-bottom:8px">Recovered zones: ';
