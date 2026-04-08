@@ -141,6 +141,19 @@ const TABS=[["borings","Borings"],["header","Header"],["samplers","Core Log"],["
 
 let borings=[], bi=0, tab="header", expL=null;
 
+// ===== AUTO-SAVE =====
+function autoSave(){
+  try{localStorage.setItem("fieldlog_borings",JSON.stringify(borings));localStorage.setItem("fieldlog_bi",bi);localStorage.setItem("fieldlog_tab",tab);}catch(e){}
+}
+function autoRestore(){
+  try{
+    var d=localStorage.getItem("fieldlog_borings");
+    if(d){borings=JSON.parse(d);bi=+localStorage.getItem("fieldlog_bi")||0;tab=localStorage.getItem("fieldlog_tab")||"header";if(bi>=borings.length)bi=0;return true;}
+  }catch(e){}
+  return false;
+}
+var _restored=autoRestore();
+
 // Try to restore from autosave
 try{const saved=null;}catch(e){} // placeholder - no localStorage in some contexts
 
@@ -688,6 +701,7 @@ function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").
 
 // ===== INIT =====
 if(!borings.length) borings=[mkBlank()];
+if(_restored) toast("Restored "+borings.length+" boring(s)");
 
 function B(){return borings[bi];}
 
@@ -713,7 +727,7 @@ function doImport(){
     var f=e.target.files[0];if(!f)return;
     var reader=new FileReader();
     reader.onload=function(ev){
-      try{var d=JSON.parse(ev.target.result);borings=Array.isArray(d)?d:[d];bi=0;tab="header";expL=null;renderAll();toast("Loaded "+borings.length+" boring(s)");}catch(err){alert("Invalid JSON file");}
+      try{var d=JSON.parse(ev.target.result);borings=Array.isArray(d)?d:[d];bi=0;tab="header";expL=null;renderAll();autoSave();toast("Loaded "+borings.length+" boring(s)");}catch(err){alert("Invalid JSON file");}
     };reader.readAsText(f);
   };inp.click();
 }
@@ -1357,15 +1371,18 @@ function renderBody(){
     h+='<div>Photos: '+(b.photos||[]).length+'</div></div>';
     if(b.remarks) h+='<div style="margin-top:8px;font-size:12px;color:#fbbf24;font-style:italic">'+esc(b.remarks)+'</div>';
     h+='<button class="btn btn-blue" style="margin-top:16px" onclick="doSave()">Save JSON</button>';
+    h+='<div style="margin-top:8px;font-size:11px;color:#86efac;text-align:center">✓ Auto-saving to browser storage</div>';
     if(_voiceTraining.length>0){
       h+='<div style="margin-top:12px;font-size:11px;color:#a78bfa">🎙 '+_voiceTraining.length+' voice entries recorded for training data</div>';
       h+='<button class="btn" style="background:#7c3aed;margin-top:4px;font-size:12px;padding:10px" onclick="exportTraining()">Export Voice Training Data</button>';
     }
+    h+='<button class="btn" style="background:#dc2626;margin-top:16px;font-size:12px;padding:10px" onclick="if(confirm(\'Clear all saved data and start fresh?\')){localStorage.removeItem(\'fieldlog_borings\');localStorage.removeItem(\'fieldlog_bi\');localStorage.removeItem(\'fieldlog_tab\');borings=[mkBlank()];bi=0;tab=\'header\';expL=null;renderAll();toast(\'Cleared\');}">Clear Data &amp; Start Fresh</button>';
     h+='</div>';
   }
 
   document.getElementById("body").innerHTML=h;
   renderBsel();
+  autoSave();
 }
 
 window.addLitho=function(t){
