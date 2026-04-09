@@ -439,7 +439,7 @@ function parseOffline(t){
 
   // Structure
   if(/\bstratified\b/.test(low)){r.structure="stratified";r._confidence++;r._matched.push("struct");}
-  else if(/\blaminated\b/.test(low)){r.structure="laminated";r._confidence++;r._matched.push("struct");}
+  else if(/\blaminated\b|\bbedding\b|\bbedded\b/.test(low)){r.structure="laminated";r._confidence++;r._matched.push("struct");}
   else if(/\bfissured\b/.test(low)){r.structure="fissured";r._confidence++;r._matched.push("struct");}
   else if(/\blensed\b/.test(low)){r.structure="lensed";r._confidence++;r._matched.push("struct");}
   else if(/\bblocky\b/.test(low)){r.structure="blocky";r._confidence++;r._matched.push("struct");}
@@ -465,17 +465,17 @@ function parseOffline(t){
   else if(/\borganics?\b/.test(low)){r.extra="with organics";r._confidence++;r._matched.push("extra");}
   else if(/\broots?\b/.test(low)){r.extra="with roots";r._confidence++;r._matched.push("extra");}
 
-  // Percentages — look for patterns like "10 gravel 80 sand 10 fines" or "10% gravel"
-  // Pattern 1: number before soil type (10% gravel 80% sand 10% fines)
-  // Pattern 2: soil type before number (gravel 10% sand 80% fines 10%)
-  // Pattern 3: three numbers close together (10 80 10) — ONLY if tightly grouped
+  // Percentages — look for patterns like "10 gravel 80 sand 10 fines" or "gravel is 10%"
+  // Normalize "fine" to "fines" for percentage matching (but not "fine to" gradation)
+  var pctText=low.replace(/\bfine\b(?!\s+to)/g,"fines");
+  // Pattern 1: number-type-number-type-number-type (10% gravel 80% sand 10% fines)
+  // Pattern 2: type-number-type-number-type-number (gravel is 10% sand is 80% fines 10%)
   var pctPatterns=[
-    /(\d+)\s*%?\s*(?:percent\s*)?gravel.*?(\d+)\s*%?\s*(?:percent\s*)?sand.*?(\d+)\s*%?\s*(?:percent\s*)?fines/i,
-    /gravel\s*(\d+)\s*%?.*?sand\s*(\d+)\s*%?.*?fines\s*(\d+)\s*%?/i,
-    /(\d+)\s*%?\s*gravel.*?(\d+)\s*%?\s*sand.*?(\d+)\s*%?\s*fines/i
+    /(\d+)\s*%?\s*gravel.*?(\d+)\s*%?\s*sand.*?(\d+)\s*%?\s*fines/i,
+    /gravel\s*(?:is\s*)?(\d+)\s*%?.*?sand\s*(?:is\s*)?(\d+)\s*%?.*?fines?\s*(?:is\s*|just\s*)?(\d+)\s*%?/i
   ];
   for(var pi=0;pi<pctPatterns.length;pi++){
-    var pm=low.match(pctPatterns[pi]);
+    var pm=pctText.match(pctPatterns[pi]);
     if(pm){
       var g=+pm[1],sa=+pm[2],fi=+pm[3];
       if(g+sa+fi===100||(g<=100&&sa<=100&&fi<=100)){
@@ -485,11 +485,14 @@ function parseOffline(t){
       }
     }
   }
-  // Try individual extraction — number before OR after soil type
+  // Try individual extraction — PREFER type-before-number (more reliable in speech)
   if(r.pct_gravel==null){
-    var gm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?gravel/)||low.match(/gravel\s*(?:is\s*)?(\d+)\s*%?/);
-    var sm2=low.match(/(\d+)\s*%?\s*(?:percent\s*)?sand/)||low.match(/sand\s*(?:is\s*)?(\d+)\s*%?/);
-    var fm=low.match(/(\d+)\s*%?\s*(?:percent\s*)?fines/)||low.match(/fines\s*(?:is\s*)?(\d+)\s*%?/);
+    var gm=low.match(/gravel\s*(?:is\s*)?(\d+)\s*%?/)||low.match(/(\d+)\s*%?\s*gravel/);
+    var sm2=low.match(/sand\s*(?:is\s*)?(\d+)\s*%?/)||low.match(/(\d+)\s*%?\s*sand/);
+    var fm=pctText.match(/fines?\s*(?:is\s*|just\s*)?(\d+)\s*%?/)||pctText.match(/(\d+)\s*%?\s*fines/);
+    if(gm)r.pct_gravel=+gm[1];
+    if(sm2)r.pct_sand=+sm2[1];
+    if(fm)r.pct_fines=+fm[1];
     if(gm)r.pct_gravel=+gm[1];
     if(sm2)r.pct_sand=+sm2[1];
     if(fm)r.pct_fines=+fm[1];
@@ -562,7 +565,7 @@ function parseOffline(t){
 function processVoiceResult(transcript,layerIdx){
   // Try offline parser first
   var offline=parseOffline(transcript);
-  if(offline._confidence>=4){
+  if(offline._confidence>=5){
     // Confident enough — use offline result
     toast("Offline parse ("+offline._confidence+" matches: "+offline._matched.join(",")+")");
     applyVoiceParsed(offline,layerIdx,transcript);
