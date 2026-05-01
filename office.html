@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boring Log Viewer — Office</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0}
+.toolbar{background:linear-gradient(135deg,#0f2744,#1e3a5f);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:100;border-bottom:2px solid #2563eb}
+.toolbar h1{font-size:18px;color:#60a5fa;display:flex;align-items:center;gap:8px}
+.toolbar h1 span{font-size:10px;color:#94a3b8;font-weight:400;letter-spacing:1px}
+.toolbar .btns{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar button{padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;transition:all .15s}
+.btn-p{background:#2563eb}.btn-p:hover{background:#3b82f6}
+.btn-s{background:#334155}.btn-s:hover{background:#475569}
+.btn-d{background:#dc2626}.btn-d:hover{background:#ef4444}
+.btn-g{background:#16a34a}.btn-g:hover{background:#22c55e}
+.boring-tabs{display:flex;gap:4px;padding:8px 20px;overflow-x:auto;background:#111827;border-bottom:2px solid #1e3a5f}
+.boring-tabs button{padding:7px 14px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:12px;white-space:nowrap;cursor:pointer;transition:all .15s}
+.boring-tabs button.act{border:2px solid #60a5fa;background:#1e3a5f;color:#93c5fd;font-weight:700}
+.boring-tabs button:hover:not(.act){background:#334155}
+.empty{text-align:center;padding:80px 20px;color:#64748b;font-size:15px;line-height:1.8}
+.empty .icon{font-size:56px;margin-bottom:12px}
+.empty kbd{background:#334155;padding:2px 8px;border-radius:4px;font-size:12px;color:#93c5fd}
+.log-container{display:flex;flex-direction:column;align-items:center;padding:20px;gap:20px}
+.log-page{background:#fff;width:8.5in;min-height:11in;box-shadow:0 4px 24px rgba(0,0,0,.5);border-radius:4px;position:relative;overflow:hidden}
+.log-page svg{display:block;width:100%;height:auto}
+.controls{display:flex;gap:12px;align-items:center;padding:8px 20px;background:#1e293b;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8}
+.controls label{display:flex;align-items:center;gap:4px}
+.controls select,.controls input[type=number]{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:4px 8px;border-radius:4px;font-size:12px}
+.status{padding:6px 20px;background:#14532d;color:#86efac;font-size:12px;font-weight:600;display:none}
+.edit-panel{position:fixed;right:0;top:0;width:360px;height:100vh;background:#1e293b;border-left:2px solid #2563eb;z-index:200;overflow-y:auto;display:none;padding:16px}
+.edit-panel h2{font-size:14px;color:#60a5fa;margin-bottom:12px}
+.edit-panel label{display:block;font-size:11px;color:#94a3b8;margin:8px 0 3px;font-weight:600}
+.edit-panel input,.edit-panel select,.edit-panel textarea{width:100%;padding:8px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;font-size:13px}
+.edit-panel textarea{min-height:60px;resize:vertical}
+.edit-panel .erow{display:flex;gap:8px}
+.edit-panel .erow>*{flex:1}
+.edit-panel .ebtn{width:100%;padding:10px;border:none;border-radius:6px;font-weight:700;cursor:pointer;margin-top:8px;font-size:13px}
+@media print{
+  body{background:#fff!important}
+  .toolbar,.boring-tabs,.controls,.no-print,.edit-panel,.status{display:none!important}
+  .log-container{padding:0}
+  .log-page{box-shadow:none!important;margin:0!important;page-break-after:always;border:none!important;width:100%!important}
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h1>📊 Boring Log Viewer <span>gINT-LITE · OFFICE</span></h1>
+  <div class="btns">
+    <button class="btn-s" onclick="importFile()">📂 Import JSON</button>
+    <button class="btn-g" onclick="exportJSON()">💾 Export JSON</button>
+    <button class="btn-p" onclick="printCurrent()">🖨️ Print Current</button>
+    <button class="btn-p" onclick="printAll()">🖨️ Print All</button>
+  </div>
+</div>
+<div id="statusBar" class="status"></div>
+<div id="boringTabs" class="boring-tabs" style="display:none"></div>
+<div id="controlBar" class="controls" style="display:none">
+  <label>Page depth: <select id="ppdSel" onchange="ppd=+this.value;render()"><option value="10">10 ft</option><option value="20" selected>20 ft</option></select></label>
+  <label>Company: <input type="text" id="companyName" value="PIONEER Technologies Corporation" style="width:240px" onchange="render()" placeholder="Company name"></label>
+  <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="showPhotos" onchange="render()"> Photos</label>
+  <span style="margin-left:auto;color:#64748b" id="pageCount"></span>
+</div>
+<div id="content"></div>
+
+<script>
+let borings=[],bi=0,ppd=20,printMode="current";
+
+const UC={"AC":"#777","FILL":"#999","TOP":"#5a8a5a","GP":"#D4A76A","GW":"#C4965A","SP":"#FFE4A0","SW":"#FFD700","SP-SM":"#F5DEB3","SP-SC":"#E8D0A0","SM":"#E8C97A","SC":"#D2B48C","GP-GM":"#CDA868","GM":"#BFA060","GC":"#A08050","ML":"#8FBC8F","CL":"#7BA37B","CL-ML":"#90C090","CH":"#5A8A5A","MH":"#6B9E6B","OL":"#6B4226","OH":"#4A2E10","PT":"#2E1A00","SW-SM":"#F0D890","SW-SC":"#E8C878","GW-GM":"#C9A060","GW-GC":"#B89050"};
+
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+function flash(msg,ok){const el=document.getElementById("statusBar");el.textContent=msg;el.style.display="block";el.style.background=ok?"#14532d":"#7f1d1d";el.style.color=ok?"#86efac":"#fca5a5";setTimeout(()=>el.style.display="none",3000);}
+
+function importFile(){
+  const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.multiple=true;
+  inp.onchange=async e=>{
+    let count=0;
+    for(const f of e.target.files){
+      const t=await f.text();
+      try{const d=JSON.parse(t);if(Array.isArray(d)){borings.push(...d);count+=d.length;}else{borings.push(d);count++;}}catch{flash("Invalid: "+f.name,false);}
+    }
+    bi=0;render();flash("Imported "+count+" boring(s)",true);
+  };inp.click();
+}
+
+function exportJSON(){
+  if(!borings.length) return;
+  const d=JSON.stringify(borings,null,2);
+  const blob=new Blob([d],{type:"application/json"});
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=u;a.download="boring_logs_"+new Date().toISOString().slice(0,10)+".json";a.click();
+  URL.revokeObjectURL(u);
+  flash("Exported "+borings.length+" boring(s)",true);
+}
+
+function printCurrent(){printMode="current";window.print();}
+function printAll(){printMode="all";renderForPrint();setTimeout(()=>window.print(),100);}
+
+function renderForPrint(){
+  if(printMode==="all"){
+    var showPhotos=document.getElementById("showPhotos")&&document.getElementById("showPhotos").checked;
+    let html='<div class="log-container">';
+    borings.forEach(b=>{
+      const td=b.total_depth||15;
+      const logPages=Math.ceil(td/ppd);
+      const photoCount=(b.photos||[]).length;
+      const photoPages=showPhotos?Math.ceil(photoCount/2):0;
+      const grandTotal=logPages+photoPages;
+      for(let pg=0;pg<logPages;pg++){
+        html+=`<div class="log-page">${renderPage(b,pg,logPages,ppd,td,showPhotos,grandTotal)}</div>`;
+      }
+      if(showPhotos&&photoCount>0){
+        for(let pp=0;pp<photoPages;pp++){
+          html+=`<div class="log-page">${renderPhotoPage(b,pp,photoPages,logPages,grandTotal)}</div>`;
+        }
+      }
+    });
+    html+='</div>';
+    document.getElementById("content").innerHTML=html;
+  }
+}
+
+window.addEventListener("afterprint",()=>{if(printMode==="all")render();printMode="current";});
+
+function render(){
+  if(!borings.length){
+    document.getElementById("boringTabs").style.display="none";
+    document.getElementById("controlBar").style.display="none";
+    document.getElementById("content").innerHTML=`<div class="empty"><div class="icon">📂</div>Import a <kbd>.json</kbd> file from the Field Boring Log app to view and print boring logs.<br><br>Click <b>Import JSON</b> above, or drag a file onto this page.</div>`;
+    return;
+  }
+  document.getElementById("controlBar").style.display="flex";
+  const tabEl=document.getElementById("boringTabs");
+  tabEl.style.display="flex";
+  tabEl.innerHTML=borings.map((b,i)=>`<button class="${i===bi?"act":""}" onclick="bi=${i};render()">${esc(b.id||"Boring "+(i+1))}</button>`).join("")+`<button class="btn-d" style="margin-left:auto;font-size:11px" onclick="if(confirm('Remove this boring?')){borings.splice(bi,1);bi=Math.max(0,bi-1);render();}">✕ Remove</button><button class="btn-d" style="font-size:11px" onclick="if(confirm('Clear all borings?')){borings=[];bi=0;render();}">Clear All</button>`;
+  
+  const b=borings[bi];
+  const td=b.total_depth||15;
+  const pages=Math.ceil(td/ppd);
+  const showPhotos=document.getElementById("showPhotos")&&document.getElementById("showPhotos").checked;
+  const photoCount=(b.photos||[]).length;
+  const photoPages=showPhotos?Math.ceil(photoCount/2):0;
+  const totalPages=pages+photoPages;
+  document.getElementById("pageCount").textContent=`${b.id||"?"} · ${td} ft TD · ${pages+photoPages} page(s) · ${borings.length} boring(s) loaded`+(showPhotos&&photoCount?` · ${photoCount} photo(s)`:"");
+  
+  let html='<div class="log-container">';
+  for(let pg=0;pg<pages;pg++){
+    html+=`<div class="log-page">${renderPage(b,pg,pages,ppd,td,showPhotos,totalPages)}</div>`;
+  }
+  if(showPhotos&&photoCount>0){
+    for(let pp=0;pp<photoPages;pp++){
+      html+=`<div class="log-page">${renderPhotoPage(b,pp,photoPages,pages,totalPages)}</div>`;
+    }
+  }
+  html+='</div>';
+  document.getElementById("content").innerHTML=html;
+}
+
+function astmPatternDefs(){
+  // ASTM D2487 standard soil patterns — black symbols on transparent background
+  var s='<defs>';
+  // ---- GRAVEL PATTERNS ----
+  // GW/GP: Irregular rounded gravel pieces
+  s+='<pattern id="pat_GP" patternUnits="userSpaceOnUse" width="12" height="12">';
+  s+='<circle cx="4" cy="4" r="3" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<circle cx="10" cy="9" r="2.5" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='</pattern>';
+  // GM: Gravel + silt dashes
+  s+='<pattern id="pat_GM" patternUnits="userSpaceOnUse" width="12" height="14">';
+  s+='<circle cx="4" cy="4" r="3" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<circle cx="10" cy="3" r="2" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<line x1="1" y1="10" x2="5" y2="10" stroke="#000" stroke-width="0.5"/>';
+  s+='<line x1="7" y1="12" x2="11" y2="12" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+  // GC: Gravel + clay brick
+  s+='<pattern id="pat_GC" patternUnits="userSpaceOnUse" width="12" height="14">';
+  s+='<circle cx="4" cy="4" r="3" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<circle cx="10" cy="3" r="2" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<line x1="0" y1="10" x2="12" y2="10" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="0" y1="13" x2="12" y2="13" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="6" y1="10" x2="6" y2="13" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  // ---- SAND PATTERNS ----
+  // SW/SP: Fine stipple dots
+  s+='<pattern id="pat_SP" patternUnits="userSpaceOnUse" width="6" height="6">';
+  s+='<circle cx="1.5" cy="1.5" r="0.6" fill="#000"/>';
+  s+='<circle cx="4.5" cy="4.5" r="0.6" fill="#000"/>';
+  s+='</pattern>';
+  // SM: Sand dots + silt dashes
+  s+='<pattern id="pat_SM" patternUnits="userSpaceOnUse" width="8" height="10">';
+  s+='<circle cx="2" cy="2" r="0.6" fill="#000"/>';
+  s+='<circle cx="6" cy="2" r="0.6" fill="#000"/>';
+  s+='<circle cx="4" cy="5" r="0.6" fill="#000"/>';
+  s+='<line x1="1" y1="8" x2="4" y2="8" stroke="#000" stroke-width="0.5"/>';
+  s+='<line x1="5" y1="9.5" x2="7.5" y2="9.5" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+  // SC: Sand dots + clay brick lines
+  s+='<pattern id="pat_SC" patternUnits="userSpaceOnUse" width="8" height="10">';
+  s+='<circle cx="2" cy="2" r="0.6" fill="#000"/>';
+  s+='<circle cx="6" cy="2" r="0.6" fill="#000"/>';
+  s+='<circle cx="4" cy="5" r="0.6" fill="#000"/>';
+  s+='<line x1="0" y1="8" x2="8" y2="8" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="4" y1="8" x2="4" y2="10" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+  // SP-SM: Sand dots + light dashes
+  s+='<pattern id="pat_SPSM" patternUnits="userSpaceOnUse" width="8" height="8">';
+  s+='<circle cx="2" cy="2" r="0.6" fill="#000"/>';
+  s+='<circle cx="6" cy="5" r="0.6" fill="#000"/>';
+  s+='<line x1="1" y1="7" x2="3.5" y2="7" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  // ---- SILT PATTERNS ----
+  // ML: Horizontal dashes
+  s+='<pattern id="pat_ML" patternUnits="userSpaceOnUse" width="8" height="5">';
+  s+='<line x1="0.5" y1="2.5" x2="4" y2="2.5" stroke="#000" stroke-width="0.5"/>';
+  s+='<line x1="5" y1="5" x2="7.5" y2="5" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+  // MH: Denser horizontal dashes
+  s+='<pattern id="pat_MH" patternUnits="userSpaceOnUse" width="8" height="4">';
+  s+='<line x1="0.5" y1="1.5" x2="4.5" y2="1.5" stroke="#000" stroke-width="0.5"/>';
+  s+='<line x1="4" y1="3.5" x2="7.5" y2="3.5" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+
+  // ---- CLAY PATTERNS ----
+  // CL: Diagonal hatching
+  s+='<pattern id="pat_CL" patternUnits="userSpaceOnUse" width="6" height="6">';
+  s+='<line x1="0" y1="6" x2="6" y2="0" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+  // CH: Dense diagonal hatching (cross-hatch)
+  s+='<pattern id="pat_CH" patternUnits="userSpaceOnUse" width="6" height="6">';
+  s+='<line x1="0" y1="6" x2="6" y2="0" stroke="#000" stroke-width="0.5"/>';
+  s+='<line x1="0" y1="0" x2="6" y2="6" stroke="#000" stroke-width="0.5"/>';
+  s+='</pattern>';
+  // CL-ML: Diagonal + dashes
+  s+='<pattern id="pat_CLML" patternUnits="userSpaceOnUse" width="8" height="8">';
+  s+='<line x1="0" y1="8" x2="8" y2="0" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="1" y1="4" x2="4" y2="4" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  // ---- ORGANIC / PEAT ----
+  // OL/OH: Diagonal lines + organic squiggle
+  s+='<pattern id="pat_OL" patternUnits="userSpaceOnUse" width="10" height="8">';
+  s+='<line x1="0" y1="8" x2="8" y2="0" stroke="#000" stroke-width="0.4"/>';
+  s+='<path d="M1,6 Q3,4 5,6 Q7,8 9,6" fill="none" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+  // PT: Grass/reed symbols
+  s+='<pattern id="pat_PT" patternUnits="userSpaceOnUse" width="8" height="8">';
+  s+='<line x1="2" y1="8" x2="2" y2="3" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="2" y1="3" x2="1" y2="1" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="6" y1="8" x2="6" y2="4" stroke="#000" stroke-width="0.4"/>';
+  s+='<line x1="6" y1="4" x2="7" y2="2" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  // ---- FILL / ASPHALT ----
+  s+='<pattern id="pat_AC" patternUnits="userSpaceOnUse" width="6" height="6">';
+  s+='<line x1="0" y1="6" x2="6" y2="0" stroke="#000" stroke-width="0.8"/>';
+  s+='<line x1="0" y1="0" x2="6" y2="6" stroke="#000" stroke-width="0.8"/>';
+  s+='</pattern>';
+  s+='<pattern id="pat_FILL" patternUnits="userSpaceOnUse" width="8" height="8">';
+  s+='<line x1="0" y1="4" x2="8" y2="4" stroke="#000" stroke-width="0.4"/>';
+  s+='<circle cx="4" cy="2" r="1" fill="none" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  // GP-GM: Gravel + light silt dashes
+  s+='<pattern id="pat_GPGM" patternUnits="userSpaceOnUse" width="12" height="12">';
+  s+='<circle cx="4" cy="4" r="2.8" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<circle cx="10" cy="9" r="2" fill="none" stroke="#000" stroke-width="0.6"/>';
+  s+='<line x1="1" y1="9" x2="4" y2="9" stroke="#000" stroke-width="0.4"/>';
+  s+='</pattern>';
+
+  s+='</defs>';
+  return s;
+}
+
+function getPatternId(uscs){
+  var map={
+    "AC":"pat_AC","FILL":"pat_FILL","TOP":"pat_FILL",
+    "GW":"pat_GP","GP":"pat_GP","GP-GM":"pat_GPGM","GW-GM":"pat_GPGM",
+    "GM":"pat_GM","GC":"pat_GC","GW-GC":"pat_GC","GP-GC":"pat_GC",
+    "SW":"pat_SP","SP":"pat_SP",
+    "SP-SM":"pat_SPSM","SW-SM":"pat_SPSM","SP-SC":"pat_SC","SW-SC":"pat_SC",
+    "SM":"pat_SM","SC":"pat_SC",
+    "ML":"pat_ML","MH":"pat_MH",
+    "CL":"pat_CL","CH":"pat_CH","CL-ML":"pat_CLML",
+    "OL":"pat_OL","OH":"pat_OL",
+    "PT":"pat_PT"
+  };
+  return map[uscs]||"pat_SP";
+}
+
+function getRecoveredZones(b){
+  var zones=[];
+  (b.samplers||[]).forEach(function(s){
+    if(s.recovery==="NR"||s.recovery==="N/A"||!s.recovery) return;
+    var recFt=parseFloat(s.recovery);
+    if(isNaN(recFt)||recFt<=0) return;
+    if(s.custom_interval&&s.recov_top!=null&&s.recov_bot!=null){
+      zones.push({top:parseFloat(s.recov_top),bot:parseFloat(s.recov_bot),runTop:s.top,runBot:s.bot});
+    } else {
+      zones.push({top:parseFloat(s.top),bot:parseFloat(s.top)+recFt,runTop:s.top,runBot:s.bot});
+    }
+  });
+  return zones;
+}
+
+function getNonRecoveredZones(b){
+  var nr=[];
+  (b.samplers||[]).forEach(function(s){
+    var recFt=parseFloat(s.recovery);
+    if(s.recovery==="NR"||(isNaN(recFt)||recFt<=0)){
+      nr.push({top:s.top,bot:s.bot});
+      return;
+    }
+    if(recFt>0){
+      var rTop,rBot;
+      if(s.custom_interval&&s.recov_top!=null&&s.recov_bot!=null){
+        rTop=parseFloat(s.recov_top);rBot=parseFloat(s.recov_bot);
+      } else {
+        rTop=parseFloat(s.top);rBot=parseFloat(s.top)+recFt;
+      }
+      if(rTop>s.top) nr.push({top:s.top,bot:rTop});
+      if(rBot<s.bot) nr.push({top:rBot,bot:s.bot});
+    }
+  });
+  return nr;
+}
+
+function isDepthRecovered(b,d){
+  var zones=getRecoveredZones(b);
+  for(var i=0;i<zones.length;i++){
+    if(d>=zones[i].top&&d<zones[i].bot) return true;
+  }
+  return false;
+}
+
+function renderPage(b,pg,totalPg,ppd,td,showPhotos,grandTotal){
+  var totalPgDisplay=grandTotal||totalPg;
+  const W=816,M=42; // 8.5in at 96dpi
+  const pStart=pg*ppd,pEnd=Math.min(pStart+ppd,td);
+  const hdrH=pg===0?130:55;
+  const colHdrH=18;
+  const footH=28;
+  const availH=1000-hdrH-colHdrH-footH; // use most of 11in page
+  const rowH=Math.floor(availH/ppd);
+  const bodyTop=hdrH+colHdrH;
+  const bodyH=ppd*rowH;
+  const pH=bodyTop+bodyH+footH;
+  const pgId=b.id+"_"+pg;
+  
+  // Column layout
+  const cols={depth:30,recov:28,litho:32,sample:64,pid:38,desc:260,uscs:32,gr:20,sa:20,fi:20,remarks:160};
+  const totalW=Object.values(cols).reduce((a,c)=>a+c,0);
+  const sc=(W-M*2)/totalW;
+  const sW={},colX={};let cx=M;
+  for(const k of Object.keys(cols)){sW[k]=cols[k]*sc;colX[k]=cx;cx+=sW[k];}
+  const rightEdge=cx;
+  
+  const ftY=(ft)=>bodyTop+((ft-pStart)/ppd)*bodyH;
+  
+  let s=`<svg viewBox="0 0 ${W} ${pH}" xmlns="http://www.w3.org/2000/svg" style="font-family:'Helvetica Neue',Arial,sans-serif">`;
+  s+=`<rect width="${W}" height="${pH}" fill="#fff"/>`;
+  
+  // ASTM soil patterns
+  s+=astmPatternDefs();
+  
+  const company=document.getElementById("companyName")?document.getElementById("companyName").value:"PIONEER Technologies Corporation";
+  
+  // ---- HEADER ----
+  if(pg===0){
+    // Company
+    s+=`<text x="${M}" y="18" font-size="9" font-weight="bold" fill="#333">${esc(company)}</text>`;
+    // Title
+    s+=`<text x="${W/2}" y="38" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">LOG OF SOIL BORING NO. ${esc(b.id)}</text>`;
+    // Location
+    s+=`<text x="${W/2}" y="52" text-anchor="middle" font-size="9" fill="#555">${esc(b.location||"")}${b.city?", "+esc(b.city):""}</text>`;
+    
+    // Info grid
+    const iy=64;
+    const pairs=[
+      [M,"BORING:",b.id, M+120,"DATE:",b.date_start, M+260,"CONTRACTOR:",b.drill_co],
+      [M,"METHOD:",b.method, M+120,"EQUIPMENT:",b.equipment, M+260,"DRILLER(S):",b.drillers||""],
+      [M,"LOGGED BY:",b.field_rep, M+120,"GW DEPTH:",b.gw_first, M+260,"GW AFTER:",b.gw_second||"N/A"],
+      [M,"TOTAL DEPTH:",b.total_depth+" ft", M+120,"BACKFILL:",b.backfill, M+260,"SCREEN:",b.screen_interval],
+    ];
+    pairs.forEach((row,ri)=>{
+      const y=iy+ri*13;
+      for(let i=0;i<row.length;i+=3){
+        const lx=row[i],lbl=row[i+1],val=row[i+2];
+        s+=`<text x="${lx}" y="${y}" font-size="8" fill="#888">${esc(lbl)}</text>`;
+        s+=`<text x="${lx+52}" y="${y}" font-size="10" font-weight="600" fill="#1a1a1a">${esc(String(val||""))}</text>`;
+      }
+    });
+    s+=`<line x1="${M}" y1="${hdrH-4}" x2="${rightEdge}" y2="${hdrH-4}" stroke="#1a1a1a" stroke-width="1"/>`;
+  } else {
+    s+=`<text x="${M}" y="16" font-size="9" fill="#888">${esc(company)}</text>`;
+    s+=`<text x="${W/2}" y="30" text-anchor="middle" font-size="10" font-weight="bold" fill="#1a1a1a">LOG OF SOIL BORING NO. ${esc(b.id)} — Page ${pg+1} of ${totalPgDisplay}</text>`;
+    s+=`<text x="${W/2}" y="42" text-anchor="middle" font-size="8" fill="#555">${pStart}–${pEnd} ft bgs</text>`;
+    s+=`<line x1="${M}" y1="${hdrH-4}" x2="${rightEdge}" y2="${hdrH-4}" stroke="#1a1a1a" stroke-width="0.8"/>`;
+  }
+  
+  // ---- COLUMN HEADERS ----
+  const chY=hdrH+colHdrH/2+3;
+  const hdrs=[["Depth","depth"],["Recov.","recov"],["Litho.","litho"],["Sample ID","sample"],["PID","pid"],["SOIL DESCRIPTION","desc"],["USCS","uscs"],["GR","gr"],["SA","sa"],["FI","fi"],["BORING REMARKS","remarks"]];
+  s+=`<rect x="${M}" y="${hdrH}" width="${rightEdge-M}" height="${colHdrH}" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="0.5"/>`;
+  hdrs.forEach(([lbl,k])=>{
+    const x=colX[k]+sW[k]/2;
+    s+=`<text x="${x}" y="${chY}" text-anchor="middle" font-size="8" font-weight="bold" fill="#1a1a1a">${lbl}</text>`;
+  });
+  
+  // ---- VERTICAL GRID ----
+  Object.keys(cols).forEach(k=>{s+=`<line x1="${colX[k]}" y1="${bodyTop}" x2="${colX[k]}" y2="${bodyTop+bodyH}" stroke="#ccc" stroke-width="0.3"/>`;});
+  s+=`<line x1="${rightEdge}" y1="${bodyTop}" x2="${rightEdge}" y2="${bodyTop+bodyH}" stroke="#ccc" stroke-width="0.3"/>`;
+  // Thicker lines for major columns
+  ["litho","sample","desc","remarks"].forEach(k=>{
+    s+=`<line x1="${colX[k]}" y1="${bodyTop}" x2="${colX[k]}" y2="${bodyTop+bodyH}" stroke="#999" stroke-width="0.5"/>`;
+  });
+  
+  // ---- DEPTH TICKS ----
+  for(let d=pStart;d<=pEnd;d++){
+    const y=ftY(d);
+    const bold=d%5===0;
+    s+=`<line x1="${colX.depth}" y1="${y}" x2="${colX.depth+sW.depth}" y2="${y}" stroke="${bold?"#1a1a1a":"#ddd"}" stroke-width="${bold?0.6:0.2}"/>`;
+    if(bold||d===pStart) s+=`<text x="${colX.depth+sW.depth/2}" y="${y+3}" text-anchor="middle" font-size="10" font-weight="${bold?"bold":"normal"}" fill="#1a1a1a">${d}</text>`;
+  }
+  
+  // ---- RECOVERY COLUMN ----
+  var recZones=getRecoveredZones(b);
+  var nrZones=getNonRecoveredZones(b);
+  // Draw recovered zones as filled bars
+  recZones.forEach(function(z){
+    var zt=Math.max(z.top,pStart),zb=Math.min(z.bot,pEnd);
+    if(zt>=zb) return;
+    var yt=ftY(zt),yb=ftY(zb);
+    s+=`<rect x="${colX.recov+2}" y="${yt}" width="${sW.recov-4}" height="${yb-yt}" fill="#ccc" stroke="#999" stroke-width="0.4"/>`;
+  });
+  // Draw non-recovered zones with "No recovery" label
+  nrZones.forEach(function(z){
+    var zt=Math.max(z.top,pStart),zb=Math.min(z.bot,pEnd);
+    if(zt>=zb) return;
+    var midY=(ftY(zt)+ftY(zb))/2;
+    s+=`<text x="${colX.recov+sW.recov/2}" y="${midY+3}" text-anchor="middle" font-size="8" fill="#999" font-style="italic">NR</text>`;
+  });
+  // Recovery text labels per sampler run
+  (b.samplers||[]).forEach(sm=>{
+    const st=Math.max(sm.top,pStart),sb=Math.min(sm.bot,pEnd);
+    if(st>=sb) return;
+    var recFt=parseFloat(sm.recovery);
+    var runFt=sm.bot-sm.top;
+    var rv="";
+    if(sm.recovery==="NR") rv="NR";
+    else if(sm.recovery==="N/A") rv="N/A";
+    else if(!isNaN(recFt)&&recFt>0) rv=recFt+"/"+runFt;
+    var labelY=ftY(st)+12;
+    if(rv) s+=`<text x="${colX.recov+sW.recov/2}" y="${labelY}" text-anchor="middle" font-size="8" fill="#555">${esc(rv)}</text>`;
+    // Run boundary
+    s+=`<line x1="${colX.recov}" y1="${ftY(st)}" x2="${colX.recov+sW.recov}" y2="${ftY(st)}" stroke="#bbb" stroke-width="0.3"/>`;
+    s+=`<line x1="${colX.recov}" y1="${ftY(sb)}" x2="${colX.recov+sW.recov}" y2="${ftY(sb)}" stroke="#bbb" stroke-width="0.3"/>`;
+  });
+  
+  // ---- LITHOLOGY FILLS (only in recovered zones) ----
+  (b.lithology||[]).forEach((l,li)=>{
+    const lt=Math.max(l.top,pStart),lb=Math.min(l.bot,pEnd);
+    if(lt>=lb) return;
+    const c=UC[l.uscs]||"#ddd";
+    const hId=getPatternId(l.uscs);
+    // Clip lithology to recovered zones only
+    var hasRecoveryData=(b.samplers||[]).length>0&&(b.samplers||[]).some(s=>s.recovery&&s.recovery!=="");
+    if(hasRecoveryData){
+      recZones.forEach(function(z){
+        var ct=Math.max(lt,z.top,pStart),cb=Math.min(lb,z.bot,pEnd);
+        if(ct>=cb) return;
+        var yt=ftY(ct),yb=ftY(cb);
+        s+=`<rect x="${colX.litho+0.5}" y="${yt}" width="${sW.litho-1}" height="${yb-yt}" fill="${c}"/>`;
+        s+=`<rect x="${colX.litho+0.5}" y="${yt}" width="${sW.litho-1}" height="${yb-yt}" fill="url(#${hId})" stroke="#888" stroke-width="0.3"/>`;
+      });
+    } else {
+      // No recovery data — show full lithology
+      var yt=ftY(lt),yb=ftY(lb);
+      s+=`<rect x="${colX.litho+0.5}" y="${yt}" width="${sW.litho-1}" height="${yb-yt}" fill="${c}"/>`;
+      s+=`<rect x="${colX.litho+0.5}" y="${yt}" width="${sW.litho-1}" height="${yb-yt}" fill="url(#${hId})" stroke="#888" stroke-width="0.3"/>`;
+    }
+    // Store layer info for deferred text rendering
+    l._lt=lt;l._lb=lb;l._fullYt=ftY(lt);l._fullYb=ftY(lb);
+  });
+
+  // ---- COLLISION-AWARE TEXT PLACEMENT ----
+  // Build all text blocks (lithology + no-recovery) sorted by depth
+  var allBlocks=[];
+  var pageLiths=(b.lithology||[]).filter(function(l){return l._lt!=null&&l._lt<l._lb;});
+  pageLiths.forEach(function(l,li){
+    var desc=l.description||"";
+    var maxC=Math.floor((sW.desc-8)/5.2);
+    var wds=desc.split(" ");var dLines=[];var cur2="";
+    wds.forEach(function(w){var t=cur2?cur2+" "+w:w;if(t.length>maxC){if(cur2)dLines.push(cur2);cur2=w;}else cur2=t;});
+    if(cur2)dLines.push(cur2);
+    var lh2=12;
+    allBlocks.push({type:"litho",layer:l,idx:li,depthTop:l.top,lines:dLines,lh:lh2,
+      textH:dLines.length*lh2+8,naturalY:l._fullYt+12,resolvedY:l._fullYt+12});
+  });
+  nrZones.forEach(function(z){
+    var zt=Math.max(z.top,pStart),zb=Math.min(z.bot,pEnd);
+    if(zt>=zb) return;
+    allBlocks.push({type:"nr",depthTop:z.top,depthBot:z.bot,lines:["No recovery "+z.top+"\u2013"+z.bot+" ft."],
+      lh:12,textH:16,naturalY:ftY(zt)+12,resolvedY:ftY(zt)+12});
+  });
+  allBlocks.sort(function(a,b){return a.depthTop-b.depthTop||(a.naturalY-b.naturalY);});
+
+  // Resolve collisions — push blocks down if they overlap previous
+  // Also account for bracket lines that will be drawn between overflowing blocks
+  for(var ci=1;ci<allBlocks.length;ci++){
+    var prevB=allBlocks[ci-1];
+    var currB=allBlocks[ci];
+    var prevBot=prevB.resolvedY+prevB.textH;
+    // Check if previous block overflows past current block's natural contact position
+    var contactAtCurr=currB.naturalY;
+    var needsBracket=(prevBot>contactAtCurr+2);
+    var minGap=needsBracket?24:6; // extra space for bracket line + clearance
+    if(currB.resolvedY<prevBot+minGap){
+      currB.resolvedY=prevBot+minGap;
+    }
+  }
+
+  // Draw text at resolved positions
+  allBlocks.forEach(function(blk){
+    if(blk.type==="nr"){
+      s+=`<text x="${colX.desc+4}" y="${blk.resolvedY}" font-size="10" fill="#999" font-style="italic">${esc(blk.lines[0])}</text>`;
+      return;
+    }
+    var l=blk.layer;var ty=blk.resolvedY;
+    blk.lines.forEach(function(ln,i){
+      s+=`<text x="${colX.desc+4}" y="${ty+i*blk.lh}" font-size="10" fill="#1a1a1a">${esc(ln)}</text>`;
+    });
+    s+=`<text x="${colX.uscs+sW.uscs/2}" y="${ty}" text-anchor="middle" font-size="10" font-weight="bold" fill="#1a1a1a">${esc(l.uscs)}</text>`;
+    if(l.gr!=null) s+=`<text x="${colX.gr+sW.gr/2}" y="${ty+blk.lh}" text-anchor="middle" font-size="8" fill="#555">${l.gr}</text>`;
+    if(l.sa!=null) s+=`<text x="${colX.sa+sW.sa/2}" y="${ty+blk.lh}" text-anchor="middle" font-size="8" fill="#555">${l.sa}</text>`;
+    if(l.fi!=null) s+=`<text x="${colX.fi+sW.fi/2}" y="${ty+blk.lh}" text-anchor="middle" font-size="8" fill="#555">${l.fi}</text>`;
+    l._resolvedEndY=ty+blk.textH;
+  });
+
+  // Draw contact lines with bracket handling
+  pageLiths.forEach(function(l,li){
+    if(l.top<=pStart) return;
+    var contactY=ftY(Math.max(l.top,pStart));
+    s+=`<line x1="${colX.uscs}" y1="${contactY}" x2="${colX.fi+sW.fi}" y2="${contactY}" stroke="#ccc" stroke-width="0.3"/>`;
+    var prevL=li>0?pageLiths[li-1]:null;
+    if(prevL&&prevL._resolvedEndY&&prevL._resolvedEndY>contactY+2){
+      var fY=prevL._resolvedEndY+0.1;
+      var bx1=colX.desc,bx2=colX.desc+sW.desc,bw=8;
+      s+=`<line x1="${bx1}" y1="${contactY}" x2="${bx1+bw}" y2="${fY}" stroke="#1a1a1a" stroke-width="0.4"/>`;
+      s+=`<line x1="${bx1+bw}" y1="${fY}" x2="${bx2-bw}" y2="${fY}" stroke="#1a1a1a" stroke-width="0.4" stroke-dasharray="4,3"/>`;
+      s+=`<line x1="${bx2-bw}" y1="${fY}" x2="${bx2}" y2="${contactY}" stroke="#1a1a1a" stroke-width="0.4"/>`;
+    } else {
+      s+=`<line x1="${colX.desc}" y1="${contactY}" x2="${colX.desc+sW.desc}" y2="${contactY}" stroke="#1a1a1a" stroke-width="0.4" stroke-dasharray="4,3"/>`;
+    }
+  });
+  
+  // ---- PID ----
+  const pidVals=(b.pid||[]).filter(p=>+p.depth>=pStart&&+p.depth<=pEnd);
+  const maxPID=Math.max(...pidVals.map(p=>parseFloat(p.reading)||0),1);
+  pidVals.forEach(p=>{
+    const d=+p.depth;
+    const y=ftY(d);
+    const val=parseFloat(p.reading);
+    // Mini bar
+    if(!isNaN(val)&&val>0){
+      const bw=Math.min(sW.pid-14,(val/maxPID)*(sW.pid-14));
+      s+=`<rect x="${colX.pid+1}" y="${y-3}" width="${bw}" height="${5}" fill="#60a5fa33" rx="1"/>`;
+    }
+    s+=`<text x="${colX.pid+sW.pid-2}" y="${y+3}" text-anchor="end" font-size="10" fill="#1a1a1a">${esc(String(p.reading))}</text>`;
+  });
+  
+  // ---- SOIL SAMPLE BARS ----
+  (b.samples||[]).forEach(sm=>{
+    const parts=(sm.interval||"").split("-").map(Number);if(parts.length!==2) return;
+    const [st,sb]=parts;if(sb<=pStart||st>=pEnd) return;
+    const yt=ftY(Math.max(st,pStart)),yb=ftY(Math.min(sb,pEnd));
+    s+=`<rect x="${colX.sample+2}" y="${yt}" width="${12}" height="${yb-yt}" fill="#475569" stroke="#334155" stroke-width="0.5" rx="1"/>`;
+    const label=`${b.id}-${sm.interval}`;
+    const midSY=(yt+yb)/2;
+    const typeStr=sm.type?esc(sm.type)+"  ":"";
+    s+=`<text x="${colX.sample+17}" y="${midSY-1}" font-size="9" font-weight="600" fill="#1a1a1a">${esc(label)}</text>`;
+    s+=`<text x="${colX.sample+17}" y="${midSY+7}" font-size="8" fill="#666">${typeStr}(${esc(sm.time)})${sm.dup?" DUP":""}</text>`;
+  });
+  
+  // ---- GW SAMPLES ----
+  (b.gw_samples||[]).forEach(g=>{
+    const parts=(g.screen||"").split("-").map(Number);if(parts.length!==2) return;
+    const mid=(parts[0]+parts[1])/2;if(mid<pStart||mid>pEnd) return;
+    const y=ftY(mid);
+    s+=`<rect x="${colX.sample+2}" y="${y-6}" width="${12}" height="${12}" fill="none" stroke="#2563eb" stroke-width="1" rx="1"/>`;
+    s+=`<line x1="${colX.sample+4}" y1="${y-4}" x2="${colX.sample+12}" y2="${y+4}" stroke="#2563eb" stroke-width="0.8"/>`;
+    s+=`<line x1="${colX.sample+12}" y1="${y-4}" x2="${colX.sample+4}" y2="${y+4}" stroke="#2563eb" stroke-width="0.8"/>`;
+    s+=`<text x="${colX.sample+17}" y="${y-2}" font-size="9" font-weight="600" fill="#2563eb">GW ${esc(g.screen)}'</text>`;
+    s+=`<text x="${colX.sample+17}" y="${y+7}" font-size="8" fill="#2563eb">(${esc(g.time)})</text>`;
+  });
+  
+  // ---- GW MARKER in Remarks ----
+  const gwd=parseFloat(b.gw_first);
+  if(!isNaN(gwd)&&gwd>=pStart&&gwd<=pEnd){
+    const gy=ftY(gwd);
+    // Water table line across litho column
+    s+=`<line x1="${colX.litho}" y1="${gy}" x2="${colX.litho+sW.litho}" y2="${gy}" stroke="#2563eb" stroke-width="1.2"/>`;
+    s+=`<text x="${colX.remarks+4}" y="${gy+3}" font-size="10" font-weight="bold" fill="#2563eb">▼ GW at ${b.gw_first}' bgs</text>`;
+    if(b.gw_second&&b.gw_second!=="N/A"){
+      s+=`<text x="${colX.remarks+4}" y="${gy+12}" font-size="9" fill="#2563eb">(after: ${esc(b.gw_second)}')</text>`;
+    }
+  }
+  
+  // ---- PHOTO REFERENCES in Remarks ----
+  if(showPhotos&&(b.photos||[]).length>0){
+    var photosByDepth={};
+    (b.photos||[]).forEach(function(p,pi){
+      var d=-1;
+      if(p.core_run!=null&&p.core_run>=0&&b.samplers&&b.samplers[p.core_run]){
+        d=(b.samplers[p.core_run].top+b.samplers[p.core_run].bot)/2;
+      }
+      if(!photosByDepth[d]) photosByDepth[d]=[];
+      photosByDepth[d].push(pi+1);
+    });
+    Object.keys(photosByDepth).forEach(function(dk){
+      var d=parseFloat(dk);
+      if(isNaN(d)||d<0){
+        // General photos — show near top
+        d=pStart+0.5;
+      }
+      if(d<pStart||d>pEnd) return;
+      var y=ftY(d);
+      var refs=photosByDepth[dk].map(function(n){return "Photo "+n;}).join(", ");
+      // Find available Y space in remarks (offset from GW marker if needed)
+      var refY=y+20;
+      if(!isNaN(gwd)&&Math.abs(d-gwd)<2) refY=y+28;
+      s+=`<text x="${colX.remarks+4}" y="${refY}" font-size="9" fill="#1a1a1a" font-weight="600">📷 ${esc(refs)}</text>`;
+    });
+  }
+  
+  // ---- TD LINE ----
+  if(pEnd>=td){
+    const tdy=ftY(td);
+    s+=`<line x1="${M}" y1="${tdy}" x2="${rightEdge}" y2="${tdy}" stroke="#1a1a1a" stroke-width="2"/>`;
+    s+=`<text x="${colX.desc+sW.desc/2}" y="${tdy+14}" text-anchor="middle" font-size="10" font-weight="bold" fill="#1a1a1a">${td} ft — Bottom of Boring</text>`;
+    // Remarks above TD
+    let ry=tdy-8;
+    if(b.remarks){s+=`<text x="${colX.remarks+4}" y="${ry}" font-size="10" fill="#1a1a1a" font-style="italic">${esc(b.remarks)}</text>`;ry-=10;}
+    if(b.general_notes){s+=`<text x="${colX.remarks+4}" y="${ry}" font-size="10" font-weight="bold" fill="#1a1a1a">${esc(b.general_notes)}</text>`;}
+    // Backfill
+    s+=`<text x="${colX.desc+sW.desc/2}" y="${tdy+26}" text-anchor="middle" font-size="10" fill="#555">Backfill: ${esc(b.backfill||"")}</text>`;
+  }
+  
+  // ---- FOOTER ----
+  const fy=pH-8;
+  s+=`<line x1="${M}" y1="${fy-14}" x2="${rightEdge}" y2="${fy-14}" stroke="#ccc" stroke-width="0.3"/>`;
+  s+=`<text x="${M}" y="${fy-4}" font-size="8" fill="#888">${esc(company)}</text>`;
+  s+=`<text x="${rightEdge}" y="${fy-4}" text-anchor="end" font-size="8" fill="#888">Page ${pg+1} of ${totalPgDisplay}</text>`;
+  s+=`<text x="${M}" y="${fy+5}" font-size="8" fill="#aaa" font-style="italic">Soil descriptions and USCS classifications per ASTM D 2488-00. Field classifications are visual-manual estimates and subject to revision based on laboratory testing.</text>`;
+  
+  s+=`</svg>`;
+  return s;
+}
+
+function renderPhotoPage(b,ppIdx,totalPhotoPages,logPages,grandTotal){
+  var W=816,M=42;
+  var pH=1056; // 11in at 96dpi
+  var photos=b.photos||[];
+  var startIdx=ppIdx*2;
+  var pagePhotos=photos.slice(startIdx,startIdx+2);
+  var pageNum=logPages+ppIdx+1;
+  var company=document.getElementById("companyName")?document.getElementById("companyName").value:"";
+
+  var s=`<svg viewBox="0 0 ${W} ${pH}" xmlns="http://www.w3.org/2000/svg" style="font-family:'Helvetica Neue',Arial,sans-serif">`;
+  s+=`<rect width="${W}" height="${pH}" fill="#fff"/>`;
+  
+  // Header
+  if(company) s+=`<text x="${M}" y="18" font-size="9" font-weight="bold" fill="#333">${esc(company)}</text>`;
+  s+=`<text x="${W/2}" y="38" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">PHOTO DOCUMENTATION — ${esc(b.id)}</text>`;
+  s+=`<text x="${W/2}" y="52" text-anchor="middle" font-size="9" fill="#555">${esc(b.location||"")}${b.city?", "+esc(b.city):""}</text>`;
+  s+=`<line x1="${M}" y1="60" x2="${W-M}" y2="60" stroke="#1a1a1a" stroke-width="1"/>`;
+  
+  // Two photos per page
+  pagePhotos.forEach(function(p,i){
+    var photoNum=startIdx+i+1;
+    var yOff=70+i*480;
+    var imgW=W-M*2;
+    var imgH=380;
+    
+    // Photo label
+    var label="Photo "+photoNum;
+    if(p.core_run!=null&&p.core_run>=0) label+=" — Core Run #"+(p.core_run+1)+" ("+p.depth_top+"–"+p.depth_bot+" ft)";
+    else label+=" — General";
+    s+=`<text x="${M}" y="${yOff}" font-size="10" font-weight="bold" fill="#1a1a1a">${esc(label)}</text>`;
+    if(p.time) s+=`<text x="${W-M}" y="${yOff}" text-anchor="end" font-size="9" fill="#888">${esc(p.time)}</text>`;
+    
+    // Photo frame
+    s+=`<rect x="${M}" y="${yOff+6}" width="${imgW}" height="${imgH}" fill="#f5f5f5" stroke="#ccc" stroke-width="0.5" rx="2"/>`;
+    s+=`<image href="${p.data}" x="${M+2}" y="${yOff+8}" width="${imgW-4}" height="${imgH-4}" preserveAspectRatio="xMidYMid meet"/>`;
+    
+    // Note below photo
+    if(p.note){
+      s+=`<text x="${M}" y="${yOff+imgH+20}" font-size="10" fill="#333" font-style="italic">${esc(p.note)}</text>`;
+    }
+  });
+  
+  // Footer
+  var fy=pH-8;
+  s+=`<line x1="${M}" y1="${fy-14}" x2="${W-M}" y2="${fy-14}" stroke="#ccc" stroke-width="0.3"/>`;
+  if(company) s+=`<text x="${M}" y="${fy-4}" font-size="8" fill="#888">${esc(company)}</text>`;
+  s+=`<text x="${W-M}" y="${fy-4}" text-anchor="end" font-size="8" fill="#888">Page ${pageNum} of ${grandTotal}</text>`;
+  
+  s+=`</svg>`;
+  return s;
+}
+
+// Drag & drop
+document.addEventListener("dragover",e=>{e.preventDefault();});
+document.addEventListener("drop",async e=>{
+  e.preventDefault();
+  let count=0;
+  for(const f of e.dataTransfer.files){
+    if(f.name.endsWith(".json")){
+      const t=await f.text();
+      try{const d=JSON.parse(t);if(Array.isArray(d)){borings.push(...d);count+=d.length;}else{borings.push(d);count++;}}catch{}
+    }
+  }
+  if(count){bi=0;render();flash("Imported "+count+" boring(s)",true);}
+});
+
+render();
+</script>
+</body>
+</html>
